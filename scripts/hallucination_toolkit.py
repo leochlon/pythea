@@ -1,6 +1,6 @@
 
 """
-Hallucination Risk Calculator (OpenAI-only) — Closed-Book Ready
+Hallucination Risk Calculator (Gemini-only) — Closed-Book Ready
 ================================================================
 
 This update adds a robust **closed-book mode** so you can assess hallucination risk
@@ -25,7 +25,7 @@ Key additions
   larger Δ̄ needed when q_lo is small but nonzero.
 - Backwards compatible with evidence-providing workflows.
 
-All info measures remain in **nats**. OpenAI API only.
+All info measures remain in **nats**. Gemini API only.
 """
 
 from __future__ import annotations
@@ -44,42 +44,69 @@ from typing import Dict, List, Optional, Sequence, Tuple
 # ------------------------------------------------------------------------------------
 
 try:
-    from openai import OpenAI  # type: ignore
+    import google.generativeai as genAI  # type: ignore
 except Exception as e:  # pragma: no cover
-    OpenAI = None
+    genAI = None
 
 
-class OpenAIBackend:
+class GeminiBackend:
     def __init__(
         self,
-        model: str = "gpt-4o-mini",
+        model: str = "gemini-1.5-flash",
         api_key: Optional[str] = None,
         request_timeout: float = 60.0,
     ) -> None:
-        if OpenAI is None:
-            raise ImportError("Install `openai>=1.0.0` and set OPENAI_API_KEY.")
-        self.model = model
-        self.api_key = api_key or os.environ.get("OPENAI_API_KEY", "")
+        if genAI is None:
+            raise ImportError("Install `google-generativeai` and set GOOGLE_API_KEY.")
+        self.model_name = model
+        self.api_key = api_key or os.environ.get("GOOGLE_API_KEY", "")
         if not self.api_key:
-            raise RuntimeError("OPENAI_API_KEY not set.")
-        self.client = OpenAI(api_key=self.api_key)
+            raise RuntimeError("GOOGLE_API_KEY not set.")
+        genAI.configure(api_key=self.api_key)
+        self.model = genAI.GenerativeModel(model)
         self.request_timeout = float(request_timeout)
 
+    def _convert_messages_to_gemini(self, messages: List[Dict]) -> Dict[str, any]:
+        combined = []
+        for msg in messages:
+            combined.append(msg["content"])
+        contents = "\n".join(combined)
+        return {"contents": contents}
+
     def chat_create(self, messages: List[Dict], **kwargs):
-        params = dict(model=self.model, messages=messages, max_tokens=8, temperature=0.7)
-        params.update(kwargs)
-        if "timeout" in params:
-            params["request_timeout"] = params.pop("timeout")
-        return self.client.chat.completions.create(**params)
+        params = self._convert_messages_to_gemini(messages)
+        generation_config = {}
+        for key in list(kwargs.keys()):
+            if key not in ["temperature", "max_tokens", "n", "timeout"]:
+                del kwargs[key]
+        for key in list(kwargs.keys()):
+            if key == "n":
+                generation_config["candidate_count"] = kwargs[key]
+            elif key == "max_tokens":
+                generation_config["max_output_tokens"] = kwargs[key]
+            elif key == "temperature":
+                generation_config["temperature"] = kwargs[key]
+        # Set defaults
+        generation_config.setdefault("temperature", 0.7)
+        generation_config.setdefault("max_output_tokens", 8)
+        generation_config.setdefault("candidate_count", 1)
+        response = self.model.generate_content(params["contents"], generation_config=generation_config)
+        # Simulate OpenAI response
+        resp = type('Response', (), {})()
+        resp.choices = []
+        for candidate in response.candidates:
+            choice = type('Choice', (), {})()
+            choice.message = type('Message', (), {"content": candidate.content.parts[0].text if candidate.content.parts else ""}) # assume one part
+            resp.choices.append(choice)
+        if not resp.choices:
+            choice = type('Choice', (), {})()
+            choice.message = type('Message', (), {"content": response.text if hasattr(response, 'text') else ""})
+            resp.choices = [choice]
+        return resp
 
     def multi_choice(self, messages: List[Dict], n: int = 1, **kwargs):
-        try:
-            resp = self.chat_create(messages, n=n, **kwargs)
-            choices = getattr(resp, "choices", None) or []
-            if len(choices) == n:
-                return choices
-        except Exception:
-            pass
+        if "n" in kwargs:
+            n = kwargs.pop("n")
         choices = []
         for _ in range(n):
             resp = self.chat_create(messages, **kwargs)
@@ -285,7 +312,7 @@ def wilson_interval_upper(k: int, n: int, alpha: float = 0.05) -> float:
 # ------------------------------------------------------------------------------------
 
 @dataclass
-class OpenAIItem:
+class GeminiItem:
     prompt: str
     n_samples: int = 3
     m: int = 6
@@ -547,7 +574,7 @@ def _choices_to_decisions(choices) -> List[str]:
 
 
 def estimate_event_signals_sampling(
-    backend: OpenAIBackend,
+    backend: GeminiBackend,
     prompt: str,
     skeletons: List[str],
     n_samples: int = 3,
@@ -583,10 +610,10 @@ def estimate_event_signals_sampling(
 # Planner
 # ------------------------------------------------------------------------------------
 
-class OpenAIPlanner:
+class GeminiPlanner:
     def __init__(
         self,
-        backend: OpenAIBackend,
+        backend: GeminiBackend,
         temperature: float = 0.5,
         max_tokens_decision: int = 8,
         q_floor: Optional[float] = None,  # prior floor to stabilize closed-book
@@ -596,7 +623,7 @@ class OpenAIPlanner:
         self.max_tokens_decision = int(max_tokens_decision)
         self.q_floor = q_floor  # if None, per-item Laplace floor applied
 
-    def _build_skeletons(self, item: OpenAIItem) -> Tuple[List[str], bool]:
+    def _build_skeletons(self, item: GeminiItem) -> Tuple[List[str], bool]:
         seeds = item.seeds if item.seeds is not None else list(range(item.m))
         if item.skeleton_policy == "evidence_erase":
             return make_skeletons_evidence_erase(item.prompt, m=item.m, seeds=seeds, fields_to_erase=item.fields_to_erase), False
@@ -763,8 +790,8 @@ def _answer_messages(user_prompt: str) -> List[Dict]:
 
 
 def generate_answer_if_allowed(
-    backend: OpenAIBackend,
-    item: OpenAIItem,
+    backend: GeminiBackend,
+    item: GeminiItem,
     metric: ItemMetrics,
     max_tokens_answer: int = 512,
     temperature: float = 0.2,
@@ -784,6 +811,6 @@ def generate_answer_if_allowed(
 # ------------------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    print("Closed-book ready hallucination toolkit loaded (OpenAI-only).")
+    print("Closed-book ready hallucination toolkit loaded (Gemini-only).")
 # Copyright (c) 2024 Hassana Labs
 # Licensed under the MIT License - see LICENSE file for details

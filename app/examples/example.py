@@ -7,21 +7,21 @@ evidence, reporting Δ̄, B2T, ISR, and an EDFL RoH bound.
 """
 
 from scripts.hallucination_toolkit import (
-    OpenAIBackend,
-    OpenAIItem,
-    OpenAIPlanner,
+    GeminiBackend,
+    GeminiItem,
+    GeminiPlanner,
     generate_answer_if_allowed,
 )
 
 
 def main() -> None:
-    backend = OpenAIBackend(model="gpt-4o-mini")
+    backend = GeminiBackend(model="gemini-1.5-flash")
     prompt = (
         "If James has five apples and eats three of them, "
         "how many apples does he have left?"
     )
-    item = OpenAIItem(prompt=prompt, n_samples=7, m=6, skeleton_policy="closed_book")
-    planner = OpenAIPlanner(backend, temperature=0.3)
+    item = GeminiItem(prompt=prompt, n_samples=7, m=6, skeleton_policy="closed_book")
+    planner = GeminiPlanner(backend, temperature=0.3)
     metrics = planner.run([item], h_star=0.05, isr_threshold=1.0, margin_extra_bits=0.0, B_clip=12.0, clip_mode="one-sided")
     for m in metrics:
         print(f"Answer? {m.decision_answer} | {m.rationale}")

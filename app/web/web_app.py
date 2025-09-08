@@ -3,14 +3,14 @@ Streamlit Web UI — Closed-Book Hallucination Risk
 -------------------------------------------------
 
 Browser UI:
-- Enter/OpenAI API key (or rely on env var)
+- Enter/Gemini API key (or rely on env var)
 - Pick model, tune evaluation knobs
 - Enter prompt, run evaluation
 - See decision, Δ̄, B2T, ISR, EDFL RoH bound, next‑step guidance
 - Optionally generate an answer (if allowed) and export SLA JSON
 
 Run:
-  pip install streamlit openai>=1.0.0
+  pip install streamlit google-generativeai>=0.5.0
   streamlit run app/web/web_app.py
 """
 
@@ -23,17 +23,17 @@ from dataclasses import asdict
 import streamlit as st
 
 from scripts.hallucination_toolkit import (
-    OpenAIBackend,
-    OpenAIItem,
-    OpenAIPlanner,
+    GeminiBackend,
+    GeminiItem,
+    GeminiPlanner,
     generate_answer_if_allowed,
     make_sla_certificate,
 )
 
 
 DEFAULT_MODELS = [
-    "gpt-4o-mini",
-    "gpt-4o",
+    "gemini-1.5-flash",
+    "gemini-1.5-pro",
 ]
 
 
@@ -60,15 +60,15 @@ def advice_for_metric(decision_answer: bool, roh: float, isr: float, b2t: float)
 def sidebar_controls():
     st.sidebar.header("Configure")
 
-    env_key = os.environ.get("OPENAI_API_KEY", "")
+    env_key = os.environ.get("GOOGLE_API_KEY", "")
 
     with st.sidebar.expander("API & Model", expanded=True):
         api_key = st.text_input(
-            "OpenAI API Key",
+            "Google Gemini API Key",
             value="",
             type="password",
-            help="If left empty, the app will try OPENAI_API_KEY from the environment.",
-            placeholder=("Using OPENAI_API_KEY from env" if env_key else "sk-..."),
+            help="If left empty, the app will try GOOGLE_API_KEY from the environment.",
+            placeholder=("Using GOOGLE_API_KEY from env" if env_key else "AIza..."),
         ).strip()
 
         model_choice = st.selectbox(
@@ -114,7 +114,7 @@ def sidebar_controls():
 def main() -> None:
     st.set_page_config(page_title="Hallucination Risk Checker", page_icon="🧪", layout="centered")
     st.title("Closed‑Book Hallucination Risk Checker")
-    st.caption("OpenAI‑only; uses EDFL / B2T / ISR to decide answer vs abstain.")
+    st.caption("Gemini‑only; uses EDFL / B2T / ISR to decide answer vs abstain.")
 
     cfg = sidebar_controls()
 
@@ -135,12 +135,12 @@ def main() -> None:
             st.warning("Please enter a prompt.")
             return
         if not cfg["api_key"]:
-            st.error("OPENAI_API_KEY is missing. Provide it in the sidebar or set the environment variable.")
+            st.error("GOOGLE_API_KEY is missing. Provide it in the sidebar or set the environment variable.")
             return
 
-        os.environ["OPENAI_API_KEY"] = cfg["api_key"]
+        os.environ["GOOGLE_API_KEY"] = cfg["api_key"]
 
-        item = OpenAIItem(
+        item = GeminiItem(
             prompt=prompt,
             n_samples=cfg["n_samples"],
             m=cfg["m"],
@@ -148,13 +148,13 @@ def main() -> None:
         )
 
         try:
-            backend = OpenAIBackend(model=cfg["model"])
+            backend = GeminiBackend(model=cfg["model"])
         except Exception as e:
-            st.error(f"Failed to initialize OpenAI backend: {e}")
-            st.info("Install `openai>=1.0.0` and ensure the API key is valid.")
+            st.error(f"Failed to initialize Gemini backend: {e}")
+            st.info("Install `google-generativeai>=0.5.0` and ensure the API key is valid.")
             return
 
-        planner = OpenAIPlanner(
+        planner = GeminiPlanner(
             backend=backend,
             temperature=cfg["temperature"],
         )
