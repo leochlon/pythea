@@ -1,6 +1,6 @@
-# Hallucination Risk Calculator & Prompt Re-engineering Toolkit (OpenAI-only)
+# Hallucination Risk Calculator & Prompt Re-engineering Toolkit (Gemini-only)
 
-**Post-hoc calibration without retraining** for large language models. This toolkit turns a raw prompt into:  
+**Post-hoc calibration without retraining** for large language models. This toolkit turns a raw prompt into:
 1) a **bounded hallucination risk** using the Expectation-level Decompression Law (EDFL), and  
 2) a **decision** to **ANSWER** or **REFUSE** under a target SLA, with transparent math (nats).
 
@@ -9,7 +9,15 @@ It supports two deployment modes:
 - **Evidence-based:** prompts include *evidence/context*; rolling priors are built by erasing that evidence.
 - **Closed-book:** prompts have *no evidence*; rolling priors are built by semantic masking of entities/numbers/titles.
 
-All scoring relies **only** on the OpenAI Chat Completions API. No retraining required.
+All scoring relies **only** on the Google Gemini API with support for:
+- `gemini-2.5-pro` (Most capable)
+- `gemini-2.5-flash` (Fast & capable)
+- `gemini-2.5-flash-lite` (Fast & lightweight)
+- `gemini-2.0-flash` (Previous generation)
+- `gemini-2.0-flash-lite` (Lightweight version)
+- `gemini-1.5-pro` & `gemini-1.5-flash` (Legacy models)
+
+No retraining required.
 
 ---
 
@@ -29,11 +37,11 @@ All scoring relies **only** on the OpenAI Chat Completions API. No retraining re
 ## Install & Setup
 
 ```bash
-pip install --upgrade openai
-export OPENAI_API_KEY=sk-...
+pip install --upgrade google-generativeai>=0.5.0
+export GOOGLE_API_KEY=AIza...  # Get from Google AI Studio
 ```
 
-> The module uses `openai>=1.0.0` and the Chat Completions API (e.g., `gpt-4o`, `gpt-4o-mini`).
+> The module uses `google-generativeai>=0.5.0` and the Gemini API with support for Gemini 1.5 and 2.0/2.5 models.
 
 ---
 
@@ -200,9 +208,9 @@ for m in metrics:
 
 ### Core Classes
 
-- `OpenAIBackend(model, api_key=None)` – wraps Chat Completions API
-- `OpenAIItem(prompt, n_samples=5, m=6, fields_to_erase=None, skeleton_policy="auto")` – one evaluation item
-- `OpenAIPlanner(backend, temperature=0.5, q_floor=None)` – runs evaluation:
+- `GeminiBackend(model, api_key=None)` – wraps Gemini API
+- `GeminiItem(prompt, n_samples=5, m=6, skeleton_policy="auto")` – one evaluation item
+- `GeminiPlanner(backend, temperature=0.5)` – runs evaluation:
   - `run(items, h_star, isr_threshold, margin_extra_bits, B_clip=12.0, clip_mode="one-sided") -> List[ItemMetrics]`
   - `aggregate(items, metrics, alpha=0.05, h_star, ...) -> AggregateReport`
 

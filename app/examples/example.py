@@ -15,7 +15,9 @@ from scripts.hallucination_toolkit import (
 
 
 def main() -> None:
-    backend = GeminiBackend(model="gemini-1.5-flash")
+    # Using latest Gemini 2.5 model - update this to try different models
+    model_name = "gemini-2.5-flash"  # Options: gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite, gemini-2.0-flash, gemini-2.0-flash-lite, gemini-1.5-pro, gemini-1.5-flash
+    backend = GeminiBackend(model=model_name)
     prompt = (
         "If James has five apples and eats three of them, "
         "how many apples does he have left?"
