@@ -65,15 +65,13 @@ def advice_for_metric(decision_answer: bool, roh: float, isr: float, b2t: float)
 def sidebar_controls():
     st.sidebar.header("Configure")
 
-    env_key = os.environ.get("GOOGLE_API_KEY", "")
-
     with st.sidebar.expander("API & Model", expanded=True):
         api_key = st.text_input(
-            "Google Gemini API Key",
+            "Google Gemini API Key (Required)",
             value="",
             type="password",
-            help="If left empty, the app will try GOOGLE_API_KEY from the environment.",
-            placeholder=("Using GOOGLE_API_KEY from env" if env_key else "AIza..."),
+            help="Enter your Google Gemini API key. This is not stored or cached.",
+            placeholder="AIza...",
         ).strip()
 
         model_choice = st.selectbox(
@@ -85,23 +83,23 @@ def sidebar_controls():
         model = (custom_model.strip() or DEFAULT_MODELS[0]) if model_choice == "Custom…" else model_choice
 
     with st.sidebar.expander("Decision thresholds", expanded=False):
-        h_star = st.slider("h* (target error when answering)", 0.005, 0.25, 0.05, 0.005)
-        isr_threshold = st.slider("ISR threshold", 0.5, 3.0, 1.0, 0.1)
-        margin_extra_bits = st.slider("Extra Δ margin (nats)", 0.0, 4.0, 0.0, 0.1)
+        h_star = st.slider("h* (target error when answering)", 0.001, 0.30, 0.05, 0.001)
+        isr_threshold = st.slider("ISR threshold", 0.2, 5.0, 1.0, 0.1)
+        margin_extra_bits = st.slider("Extra Δ margin (nats)", -1.0, 6.0, 0.0, 0.1)
 
     with st.sidebar.expander("Advanced", expanded=False):
-        skeleton_policy = st.selectbox("Skeleton policy", ["closed_book", "evidence_erase", "auto"], index=0)
-        n_samples = st.slider("n_samples (per prompt)", 1, 12, 7)
-        m = st.slider("m (skeleton variants)", 2, 12, 6)
-        temperature = st.slider("temperature (decision)", 0.0, 1.0, 0.3, 0.05)
-        B_clip = st.slider("B_clip", 1.0, 32.0, 12.0, 1.0)
+        skeleton_policy = st.selectbox("Skeleton policy", ["closed_book", "evidence_erase", "auto", "hybrid"], index=0)
+        n_samples = st.slider("n_samples (per prompt)", 1, 16, 7)
+        m = st.slider("m (skeleton variants)", 1, 16, 6)
+        temperature = st.slider("temperature (decision)", 0.0, 1.5, 0.3, 0.025)
+        B_clip = st.slider("B_clip", 0.5, 64.0, 12.0, 1.0)
         clip_mode = st.selectbox("clip_mode", ["one-sided", "symmetric"], index=0)
 
     with st.sidebar.expander("Answer generation", expanded=False):
         want_answer = st.checkbox("Generate answer if allowed", value=False)
 
     return {
-        "api_key": api_key or env_key,
+        "api_key": api_key,
         "model": model,
         "n_samples": int(n_samples),
         "m": int(m),
@@ -140,10 +138,10 @@ def main() -> None:
             st.warning("Please enter a prompt.")
             return
         if not cfg["api_key"]:
-            st.error("GOOGLE_API_KEY is missing. Provide it in the sidebar or set the environment variable.")
+            st.error("API key is required. Please enter your Google Gemini API key in the sidebar.")
             return
 
-        os.environ["GOOGLE_API_KEY"] = cfg["api_key"]
+
 
         item = GeminiItem(
             prompt=prompt,
@@ -153,7 +151,7 @@ def main() -> None:
         )
 
         try:
-            backend = GeminiBackend(model=cfg["model"])
+            backend = GeminiBackend(api_key=cfg["api_key"], model=cfg["model"])
         except Exception as e:
             st.error(f"Failed to initialize Gemini backend: {e}")
             st.info("Install `google-generativeai>=0.5.0` and ensure the API key is valid.")

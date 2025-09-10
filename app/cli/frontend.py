@@ -3,7 +3,7 @@ CLI Front-End: Hallucination Risk Checker
 ----------------------------------------
 
 Interactive CLI:
-- Enter/OpenAI API key (or use `OPENAI_API_KEY`).
+- Enter/OpenAI API key (fresh entry required, no caching).
 - Pick a model (default: `gpt-4o-mini`).
 - Type your prompt.
 - Run a closed-book risk check and see a clear report with next steps.
@@ -63,10 +63,7 @@ def select_model_interactive(default: str = DEFAULT_MODELS[0]) -> str:
 
 
 def get_api_key_interactive() -> str:
-    key = os.environ.get("OPENAI_API_KEY", "").strip()
-    if key:
-        return key
-    key = getpass("Enter OPENAI_API_KEY: ").strip()
+    key = getpass("Enter OpenAI API key: ").strip()
     return key
 
 
@@ -160,13 +157,10 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
 def main(argv: Optional[list[str]] = None) -> int:
     args = parse_args(argv)
 
-    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    api_key = get_api_key_interactive()
     if not api_key:
-        print("No OPENAI_API_KEY found in environment.")
-        api_key = get_api_key_interactive()
-        if not api_key:
-            print("No API key provided; aborting.")
-            return 1
+        print("No API key provided; aborting.")
+        return 1
 
     model = args.model or select_model_interactive()
     if not model:

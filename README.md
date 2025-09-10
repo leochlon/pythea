@@ -259,6 +259,47 @@ The toolkit provides comprehensive metrics:
 
 ---
 
+## Parameter Ranges and Experimentation Guide
+
+### Original vs Expanded Ranges
+
+To facilitate experimentation, the web UI ranges have been expanded to test edge cases while maintaining conservative defaults:
+
+| Parameter | Original Range | Expanded Range | Rationale for Expansion |
+|-----------|----------------|----------------|-------------------------|
+| **h* (target error)** | 0.005 - 0.25 | 0.001 - 0.30 | Test ultra-low (0.1%) to relaxed (30%) hallucination tolerance |
+| **ISR threshold** | 0.5 - 3.0 | 0.2 - 5.0 | Allow extremely answer-happy (0.2) to ultra-conservative (5.0) gating |
+| **Extra Δ margin (nats)** | 0.0 - 4.0 | -1.0 - 6.0 | Enable negative margins for liberal answering, extend to 6.0 for near-impossible gating |
+| **n_samples** | 1 - 12 | 1 - 16 | Max 16 for highest stability (but costly); min 1 for fast, high-variance testing |
+| **m (skeleton variants)** | 2 - 12 | 1 - 16 | Min 1 for minimal testing; max 16 for maximum robustness check |
+| **temperature** | 0.0 - 1.0 | 0.0 - 1.5 | Extend to 1.5 for highly exploratory/random decision sampling |
+| **B_clip** | 1.0 - 32.0 | 0.5 - 64.0 | Min 0.5 for extremely tight clipping; max 64 for chaotic Δ̄ swings |
+| **skeleton_policy** | closed_book, evidence_erase, auto | + hybrid | Added experimental hybrid mode (closed-book + partial erase) |
+
+### Experimental Guidelines for Inducing Answer Mode
+
+- **Ultra-Answer-Happy Configuration**: h*=0.30, ISR=0.2, margin=-1.0, B_clip=64.0, clip_mode=symmetric
+- **Near-Impossible Abstention**: h*=0.001, ISR=5.0, margin=6.0, B_clip=0.5
+- **Chaotic Exploration**: temperature=1.5, B_clip=64.0, clip_mode=symmetric, skeleton_policy=hybrid
+- **Minimal Overhead**: n_samples=1, m=1, B_clip=0.5 for rapid prototyping
+- **Maximum Stability**: n_samples=16, m=16, temperature=0.0, B_clip=1.0 for robust deployment
+
+### Skeleton Policy Notes
+
+- **closed_book**: Semantic masking (entities/numbers); great for general knowledge
+- **evidence_erase**: Removes evidence fields; optimal when context is provided
+- **auto**: Detects presence of evidence fields to choose policy automatically
+- **hybrid** (experimental): Combines closed-book masking with partial evidence erasure for mixed scenarios
+
+### Performance Impact of Range Extensions
+
+- **Extreme lows (h*=0.001, ISR=0.2, margin=-1.0)**: Increases answer rate but may violate SLA safety targets
+- **Extreme highs (ISR=5.0, margin=6.0, B_clip=64)**: Dramatically increases abstention rate even for simple queries
+- **High n_samples/m**: Doubles API costs but provides granular Δ̄ resolution
+- **Temperature >1.0**: Introduces randomness, useful for ensemble testing but unpredictable
+
+---
+
 ## Practical Considerations
 
 ### Choosing the Right Event
