@@ -24,13 +24,56 @@ from dataclasses import asdict
 
 import streamlit as st
 
-# Add the parent directory to the path to ensure imports work correctly
-current_dir = Path(__file__).parent  # /workspaces/hallucination_bayes/app/web
-project_root = current_dir.parent   # /workspaces/hallucination_bayes
-sys.path.insert(0, str(project_root))
+# Robust import path resolution for both local and cloud deployment
+try:
+    # Try standard relative import first (works in local env)
+    import scripts.hallucination_toolkit as in_sys
+    GeminiBackend = in_sys.GeminiBackend
+    OpenRouterBackend = in_sys.OpenRouterBackend
+    GeminiItem = in_sys.GeminiItem
+    GeminiPlanner = in_sys.GeminiPlanner
+    generate_answer_if_allowed = in_sys.generate_answer_if_allowed
+    make_sla_certificate = in_sys.make_sla_certificate
+except ImportError:
+    # Fallback to dynamic path resolution (for cloud deployment)
+    current_dir = Path(__file__).parent
+    project_root = current_dir.parent
 
-# Also add the scripts directory directly
-sys.path.insert(0, str(project_root / "scripts"))
+    # Try multiple potential paths
+    possible_paths = [
+        project_root,
+        project_root / "scripts",
+        current_dir / ".." / "scripts",
+        current_dir / "../../../scripts",
+        project_root.parent / "hallucination_bayes" / "scripts",
+    ]
+
+    for path_obj in possible_paths:
+        path_str = str(path_obj)
+        if path_str not in sys.path:
+            sys.path.insert(0, path_str)
+
+    try:
+        from scripts.hallucination_toolkit import (
+            GeminiBackend,
+            OpenRouterBackend,
+            GeminiItem,
+            GeminiPlanner,
+            generate_answer_if_allowed,
+            make_sla_certificate,
+        )
+    except ImportError:
+        # Absolute fallback - this should work locally at least
+        import sys
+        sys.path.append('scripts')
+        from hallucination_toolkit import (
+            GeminiBackend,
+            OpenRouterBackend,
+            GeminiItem,
+            GeminiPlanner,
+            generate_answer_if_allowed,
+            make_sla_certificate,
+        )
 
 from scripts.hallucination_toolkit import (
     GeminiBackend,
