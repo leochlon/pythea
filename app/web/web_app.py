@@ -75,16 +75,6 @@ except ImportError:
             make_sla_certificate,
         )
 
-from scripts.hallucination_toolkit import (
-    GeminiBackend,
-    OpenRouterBackend,
-    GeminiItem,
-    GeminiPlanner,
-    generate_answer_if_allowed,
-    make_sla_certificate,
-)
-
-
 DEFAULT_MODELS = [
     "gemini-2.5-pro",
     "gemini-2.5-flash",
