@@ -24,10 +24,13 @@ from dataclasses import asdict
 
 import streamlit as st
 
-# Add the parent directory to the path to ensure imports work in Streamlit Cloud
-current_dir = Path(__file__).parent
-project_root = current_dir.parent
+# Add the parent directory to the path to ensure imports work correctly
+current_dir = Path(__file__).parent  # /workspaces/hallucination_bayes/app/web
+project_root = current_dir.parent   # /workspaces/hallucination_bayes
 sys.path.insert(0, str(project_root))
+
+# Also add the scripts directory directly
+sys.path.insert(0, str(project_root / "scripts"))
 
 from scripts.hallucination_toolkit import (
     GeminiBackend,
