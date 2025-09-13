@@ -48,6 +48,22 @@ try:
 except Exception as e:  # pragma: no cover
     genAI = None
 
+# OpenRouter support (OpenAI-compatible API)
+try:
+    import openai
+    OPENAI_AVAILABLE_OR = True
+except ImportError:
+    OPENAI_AVAILABLE_OR = False
+    openai = None  # type: ignore
+
+# OpenRouter support (OpenAI-compatible API)
+try:
+    import openai
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+    openai = None  # type: ignore
+
 
 class GeminiBackend:
     def __init__(
@@ -112,6 +128,73 @@ class GeminiBackend:
             resp = self.chat_create(messages, **kwargs)
             choices.append(resp.choices[0])
         return choices
+
+
+class OpenRouterBackend:
+    def __init__(
+        self,
+        model: str = "anthropic/claude-3.5-sonnet",
+        api_key: Optional[str] = None,
+        base_url: str = "https://openrouter.ai/api/v1",
+        request_timeout: float = 60.0,
+    ) -> None:
+        if openai is None:
+            raise ImportError("Install `openai` for OpenRouter support.")
+        self.model_name = model
+
+        # Support both OPENROUTER_API_KEY env var and passed api_key
+        self.api_key = api_key or os.environ.get("OPENROUTER_API_KEY", "")
+        if not self.api_key:
+            raise RuntimeError("OPENROUTER_API_KEY not set.")
+
+        # Initialize OpenAI client with OpenRouter base URL
+        self.client = openai.OpenAI(
+            api_key=self.api_key,
+            base_url=base_url,
+            timeout=request_timeout
+        )
+        self.request_timeout = float(request_timeout)
+
+    def _convert_messages_to_openai(self, messages: List[Dict]) -> List[Dict]:
+        """Convert internal message format to OpenAI format"""
+        converted = []
+        for msg in messages:
+            converted.append({
+                "role": msg.get("role", "user"),
+                "content": msg.get("content", "")
+            })
+        return converted
+
+    def chat_create(self, messages: List[Dict], **kwargs):
+        """OpenAI-compatible chat completion"""
+        converted_messages = self._convert_messages_to_openai(messages)
+
+        # Extract OpenAI-specific parameters
+        openai_kwargs = {
+            "model": self.model_name,
+            "messages": converted_messages,
+            "max_tokens": kwargs.get("max_tokens", 8),
+            "temperature": kwargs.get("temperature", 0.7),
+        }
+
+        # Handle n parameter for multiple choices
+        n = kwargs.get("n", 1)
+        if n > 1:
+            openai_kwargs["n"] = n
+
+        # Remove our custom parameters
+        for key in ["timeout", "n"]:
+            if key in openai_kwargs and key not in ["n"]:
+                openai_kwargs.pop(key)
+
+        response = self.client.chat.completions.create(**openai_kwargs)
+        return response
+
+    def multi_choice(self, messages: List[Dict], n: int = 1, **kwargs):
+        """Get multiple choices (for sampling)"""
+        kwargs["n"] = n
+        resp = self.chat_create(messages, **kwargs)
+        return resp.choices
 
 
 # ------------------------------------------------------------------------------------

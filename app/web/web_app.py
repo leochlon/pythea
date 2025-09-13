@@ -24,6 +24,7 @@ import streamlit as st
 
 from scripts.hallucination_toolkit import (
     GeminiBackend,
+    OpenRouterBackend,
     GeminiItem,
     GeminiPlanner,
     generate_answer_if_allowed,
@@ -63,25 +64,61 @@ def advice_for_metric(decision_answer: bool, roh: float, isr: float, b2t: float)
 
 
 def sidebar_controls():
-    st.sidebar.header("Configure")
+    st.sidebar.header("🤖 Configure AI Provider & Settings")
 
-    with st.sidebar.expander("API & Model", expanded=True):
-        api_key = st.text_input(
-            "Google Gemini API Key (Required)",
-            value="",
-            type="password",
-            help="Enter your Google Gemini API key. This is not stored or cached.",
-            placeholder="AIza...",
-        ).strip()
+    # Provider selection - Gemini or OpenRouter
+    with st.sidebar.expander("🔑 API & Model", expanded=True):
+        st.markdown("**👆 Select Provider First***")
 
-        model_choice = st.selectbox(
-            "Model",
-            options=DEFAULT_MODELS + ["Custom…"],
+        provider_options = ["GEMINI", "OPENROUTER"]
+        provider_idx = st.selectbox(
+            "AI Provider",
+            options=provider_options,
             index=0,
+            help="Choose your preferred AI provider. Gemini = Google native, OpenRouter = multi-provider routing."
         )
-        custom_model = st.text_input("Custom model", value="") if model_choice == "Custom…" else ""
-        model = (custom_model.strip() or DEFAULT_MODELS[0]) if model_choice == "Custom…" else model_choice
 
+        # Provider-specific API key and models
+        if provider_idx == "GEMINI":
+            api_key = st.text_input(
+                "Google Gemini API Key (Required)",
+                value="",
+                type="password",
+                help="Enter your Google Gemini API key. This is not stored or cached.",
+                placeholder="AIza...",
+            ).strip()
+            model_choice = st.selectbox(
+                "Gemini Model",
+                options=DEFAULT_MODELS + ["Custom…"],
+                index=0,
+            )
+        else:  # OPENROUTER
+            api_key = st.text_input(
+                "OpenRouter API Key (Required)",
+                value="",
+                type="password",
+                help="Enter your OpenRouter API key. This gives you access to multiple providers via single API.",
+                placeholder="sk-or-v1-...",
+            ).strip()
+            model_choice = st.text_input(
+                "OpenRouter Model",
+                value="anthropic/claude-3.5-sonnet",
+                help="Enter any OpenRouter model name (e.g., anthropic/claude-3.5-sonnet, openai/gpt-4o, google/gemini-flash-1.5-8b)",
+            ).strip()
+
+        # Handle custom model input - No need for dropdown since OpenRouter uses text input
+        if provider_idx == "GEMINI" and model_choice == "Custom…":
+            custom_model = st.text_input("Custom model", value="")
+            if custom_model.strip():
+                model = custom_model.strip()
+            else:
+                model = DEFAULT_MODELS[0]
+        else:
+            model = model_choice
+
+        provider = provider_idx.lower()
+
+    # Other configuration options
     with st.sidebar.expander("Decision thresholds", expanded=False):
         h_star = st.slider("h* (target error when answering)", 0.001, 0.30, 0.05, 0.001)
         isr_threshold = st.slider("ISR threshold", 0.2, 5.0, 1.0, 0.1)
@@ -99,6 +136,7 @@ def sidebar_controls():
         want_answer = st.checkbox("Generate answer if allowed", value=False)
 
     return {
+        "provider": provider,
         "api_key": api_key,
         "model": model,
         "n_samples": int(n_samples),
@@ -117,7 +155,7 @@ def sidebar_controls():
 def main() -> None:
     st.set_page_config(page_title="Hallucination Risk Checker", page_icon="🧪", layout="centered")
     st.title("Closed‑Book Hallucination Risk Checker")
-    st.caption("Gemini‑only; uses EDFL / B2T / ISR to decide answer vs abstain.")
+    st.caption("Multi‑provider support; uses EDFL / B2T / ISR to decide answer vs abstain.")
 
     cfg = sidebar_controls()
 
@@ -137,8 +175,12 @@ def main() -> None:
         if not prompt:
             st.warning("Please enter a prompt.")
             return
+        provider = cfg["provider"].upper()
         if not cfg["api_key"]:
-            st.error("API key is required. Please enter your Google Gemini API key in the sidebar.")
+            if provider == "GEMINI":
+                st.error("API key is required. Please enter your Google Gemini API key in the sidebar.")
+            else:
+                st.error("API key is required. Please enter your OpenRouter API key in the sidebar.")
             return
 
 
@@ -151,10 +193,22 @@ def main() -> None:
         )
 
         try:
-            backend = GeminiBackend(api_key=cfg["api_key"], model=cfg["model"])
+            # Dynamically create backend based on selected provider
+            if cfg["provider"] == "gemini":
+                backend = GeminiBackend(api_key=cfg["api_key"], model=cfg["model"])
+                backend_name = "Gemini"
+                backend_lib = "`google-generativeai>=0.5.0`"
+            elif cfg["provider"] == "openrouter":
+                backend = OpenRouterBackend(api_key=cfg["api_key"], model=cfg["model"])
+                backend_name = "OpenRouter"
+                backend_lib = "`openai`"
+            else:
+                backend = GeminiBackend(api_key=cfg["api_key"], model=cfg["model"])
+                backend_name = "Gemini"
+                backend_lib = "`google-generativeai>=0.5.0`"
         except Exception as e:
-            st.error(f"Failed to initialize Gemini backend: {e}")
-            st.info("Install `google-generativeai>=0.5.0` and ensure the API key is valid.")
+            st.error(f"Failed to initialize {backend_name} backend: {e}")
+            st.info(f"Install {backend_lib} and ensure the API key is valid.")
             return
 
         planner = GeminiPlanner(

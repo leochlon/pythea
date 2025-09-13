@@ -1,21 +1,35 @@
-# Hallucination Risk Calculator & Prompt Re-engineering Toolkit (Gemini-only)
+# Hallucination Risk Calculator & Prompt Re-engineering Toolkit (Multi-Provider)
 
 **Post-hoc calibration without retraining** for large language models. This toolkit turns a raw prompt into:
-1) a **bounded hallucination risk** using the Expectation-level Decompression Law (EDFL), and  
+1) a **bounded hallucination risk** using the Expectation-level Decompression Law (EDFL), and
 2) a **decision** to **ANSWER** or **REFUSE** under a target SLA, with transparent math (nats).
+
+**Full Multi-Provider Support** with seamless switching between:
+- **Google Gemini** (2.0/2.5 series + legacy models via official API)
+- **Any OpenRouter Model** (Claude, GPT, Gemini, Llama, and 100+ others via OpenAI-compatible API)
 
 It supports two deployment modes:
 
 - **Evidence-based:** prompts include *evidence/context*; rolling priors are built by erasing that evidence.
 - **Closed-book:** prompts have *no evidence*; rolling priors are built by semantic masking of entities/numbers/titles.
 
-All scoring relies **only** on the Google Gemini API with support for:
+All scoring relies **only** on the selected provider's API with comprehensive model support:
+
+**Google Gemini via Official API:**
 - `gemini-2.5-pro` (Most capable)
 - `gemini-2.5-flash` (Fast & capable)
 - `gemini-2.5-flash-lite` (Fast & lightweight)
 - `gemini-2.0-flash` (Previous generation)
 - `gemini-2.0-flash-lite` (Lightweight version)
 - `gemini-1.5-pro` & `gemini-1.5-flash` (Legacy models)
+
+**Any OpenRouter Model (100+ available):**
+- `anthropic/claude-3.5-sonnet`, `anthropic/claude-3-opus`, `anthropic/claude-3-haiku`
+- `openai/gpt-4o`, `openai/gpt-4o-mini`, `openai/gpt-4-turbo`
+- `google/gemini-flash-1.5-8b`, `google/gemini-pro`
+- `meta/llama-3.1-405b-instruct`, `meta/llama-3.1-70b-instruct`
+- `mistral/mistral-large`, `mistral/codestral-mamba`
+- And [140+ more models](https://openrouter.ai/docs/models) across providers
 
 No retraining required.
 
@@ -36,12 +50,25 @@ No retraining required.
 
 ## Install & Setup
 
+**Install dependencies:**
 ```bash
-pip install --upgrade google-generativeai>=0.5.0
+pip install --upgrade google-generativeai>=0.5.0 openai requests
+```
+
+**Get API Keys:**
+
+**For Google Gemini:**
+```bash
 export GOOGLE_API_KEY=AIza...  # Get from Google AI Studio
 ```
 
-> The module uses `google-generativeai>=0.5.0` and the Gemini API with support for Gemini 1.5 and 2.0/2.5 models.
+**For OpenRouter (optional, access to 100+ models):**
+```bash
+export OPENROUTER_API_KEY=sk-or-v1-...  # Get from https://openrouter.ai/edit-keys
+# Supports Claude, GPT, Llama, Mistral, and many others with single API
+```
+
+> **Supported Models:** The toolkit works with Google Gemini models via their official API and any OpenRouter model via their OpenAI-compatible endpoint. No modifications needed - just change the provider selection.
 
 ---
 
@@ -208,9 +235,11 @@ for m in metrics:
 
 ### Core Classes
 
-- `GeminiBackend(model, api_key=None)` – wraps Gemini API
-- `GeminiItem(prompt, n_samples=5, m=6, skeleton_policy="auto")` – one evaluation item
-- `GeminiPlanner(backend, temperature=0.5)` – runs evaluation:
+**Multi-Provider Backend Classes:**
+- `GeminiBackend(model, api_key=None)` – Google Gemini via official API (2.0/2.5 series + legacy)
+- `OpenRouterBackend(model, api_key=None)` – Any OpenRouter model (100+ models, OpenAI-compatible)
+- `GeminiItem(prompt, n_samples=5, m=6, skeleton_policy="auto")` – evaluation item (works with all backends)
+- `GeminiPlanner(backend, temperature=0.5)` – unified evaluation runner:
   - `run(items, h_star, isr_threshold, margin_extra_bits, B_clip=12.0, clip_mode="one-sided") -> List[ItemMetrics]`
   - `aggregate(items, metrics, alpha=0.05, h_star, ...) -> AggregateReport`
 
