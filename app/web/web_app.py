@@ -18,9 +18,16 @@ from __future__ import annotations
 
 import json
 import os
+import sys
+from pathlib import Path
 from dataclasses import asdict
 
 import streamlit as st
+
+# Add the parent directory to the path to ensure imports work in Streamlit Cloud
+current_dir = Path(__file__).parent
+project_root = current_dir.parent
+sys.path.insert(0, str(project_root))
 
 from scripts.hallucination_toolkit import (
     GeminiBackend,
