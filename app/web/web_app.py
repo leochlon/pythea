@@ -212,7 +212,7 @@ def main() -> None:
     run_clicked = col_run.button("Run evaluation", type="primary")
     reset_clicked = col_reset.button("Reset")
     if reset_clicked:
-        st.experimental_rerun()
+        st.rerun()
 
     if run_clicked:
         if not prompt:
