@@ -1,9 +1,4 @@
-from __future__ import annotations
-import sys
-print('PYTHONPATH:', sys.path)
-import sys
-import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
+
 """
 Streamlit Web UI — Closed-Book Hallucination Risk
 -------------------------------------------------
@@ -19,12 +14,14 @@ Run:
     pip install streamlit openai>=1.0.0
     streamlit run app/web/web_app.py
 """
+from __future__ import annotations
 import json
 from dataclasses import asdict
 import streamlit as st
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+
 from scripts.hallucination_toolkit import (
     OpenAIBackend,
     OpenAIItem,
