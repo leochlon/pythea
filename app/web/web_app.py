@@ -22,6 +22,7 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
+
 from scripts.hallucination_toolkit import (
     OpenAIBackend,
     OpenAIItem,
@@ -29,11 +30,14 @@ from scripts.hallucination_toolkit import (
     generate_answer_if_allowed,
     make_sla_certificate,
 )
+from scripts.gemini_toolkit import GeminiBackend, GeminiItem, GeminiPlanner
 
 
 DEFAULT_MODELS = [
     "gpt-4o-mini",
     "gpt-4o",
+    "gemini-2.0-flash",
+    "gemini-2.0-pro",
 ]
 
 
@@ -63,13 +67,23 @@ def sidebar_controls():
     env_key = os.environ.get("OPENAI_API_KEY", "")
 
     with st.sidebar.expander("API & Model", expanded=True):
-        api_key = st.text_input(
-            "OpenAI API Key",
-            value="",
-            type="password",
-            help="If left empty, the app will try OPENAI_API_KEY from the environment.",
-            placeholder=("Using OPENAI_API_KEY from env" if env_key else "sk-..."),
-        ).strip()
+        provider = st.selectbox("Provider", ["OpenAI", "Gemini"], index=0)
+        if provider == "OpenAI":
+            api_key = st.text_input(
+                "OpenAI API Key",
+                value="",
+                type="password",
+                help="If left empty, the app will try OPENAI_API_KEY from the environment.",
+                placeholder=("Using OPENAI_API_KEY from env" if env_key else "sk-..."),
+            ).strip()
+        else:
+            api_key = st.text_input(
+                "Gemini API Key",
+                value="",
+                type="password",
+                help="If left empty, the app will try GEMINI_API_KEY from the environment.",
+                placeholder=("Using GEMINI_API_KEY from env" if os.environ.get("GEMINI_API_KEY", "") else "gm-..."),
+            ).strip()
 
         model_choice = st.selectbox(
             "Model",
@@ -96,7 +110,8 @@ def sidebar_controls():
         want_answer = st.checkbox("Generate answer if allowed", value=False)
 
     return {
-        "api_key": api_key or env_key,
+        "provider": provider,
+        "api_key": api_key or (os.environ.get("OPENAI_API_KEY", "") if provider == "OpenAI" else os.environ.get("GEMINI_API_KEY", "")),
         "model": model,
         "n_samples": int(n_samples),
         "m": int(m),
@@ -114,7 +129,7 @@ def sidebar_controls():
 def main() -> None:
     st.set_page_config(page_title="Hallucination Risk Checker", page_icon="🧪", layout="centered")
     st.title("Closed‑Book Hallucination Risk Checker")
-    st.caption("OpenAI‑only; uses EDFL / B2T / ISR to decide answer vs abstain.")
+    st.caption("Supports OpenAI and Gemini models; uses EDFL / B2T / ISR to decide answer vs abstain.")
 
     cfg = sidebar_controls()
 
@@ -135,29 +150,45 @@ def main() -> None:
             st.warning("Please enter a prompt.")
             return
         if not cfg["api_key"]:
-            st.error("OPENAI_API_KEY is missing. Provide it in the sidebar or set the environment variable.")
+            st.error(f"{cfg['provider']} API Key is missing. Provide it in the sidebar or set the environment variable.")
             return
 
-        os.environ["OPENAI_API_KEY"] = cfg["api_key"]
-
-        item = OpenAIItem(
-            prompt=prompt,
-            n_samples=cfg["n_samples"],
-            m=cfg["m"],
-            skeleton_policy=cfg["skeleton_policy"],
-        )
-
-        try:
-            backend = OpenAIBackend(model=cfg["model"])
-        except Exception as e:
-            st.error(f"Failed to initialize OpenAI backend: {e}")
-            st.info("Install `openai>=1.0.0` and ensure the API key is valid.")
-            return
-
-        planner = OpenAIPlanner(
-            backend=backend,
-            temperature=cfg["temperature"],
-        )
+        if cfg["provider"] == "OpenAI":
+            os.environ["OPENAI_API_KEY"] = cfg["api_key"]
+            item = OpenAIItem(
+                prompt=prompt,
+                n_samples=cfg["n_samples"],
+                m=cfg["m"],
+                skeleton_policy=cfg["skeleton_policy"],
+            )
+            try:
+                backend = OpenAIBackend(model=cfg["model"])
+            except Exception as e:
+                st.error(f"Failed to initialize OpenAI backend: {e}")
+                st.info("Install `openai>=1.0.0` and ensure the API key is valid.")
+                return
+            planner = OpenAIPlanner(
+                backend=backend,
+                temperature=cfg["temperature"],
+            )
+        else:
+            os.environ["GEMINI_API_KEY"] = cfg["api_key"]
+            item = GeminiItem(
+                prompt=prompt,
+                n_samples=cfg["n_samples"],
+                m=cfg["m"],
+                skeleton_policy=cfg["skeleton_policy"],
+            )
+            try:
+                backend = GeminiBackend(model=cfg["model"])
+            except Exception as e:
+                st.error(f"Failed to initialize Gemini backend: {e}")
+                st.info("Ensure the Gemini API key is valid.")
+                return
+            planner = GeminiPlanner(
+                backend=backend,
+                temperature=cfg["temperature"],
+            )
 
         with st.spinner("Evaluating… this can take a moment"):
             metrics = planner.run(
