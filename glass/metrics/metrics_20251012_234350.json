@@ -1,0 +1,20 @@
+{
+  "timestamp": "2025-10-12T23:43:50.862449",
+  "num_items": 3,
+  "num_answered": 2,
+  "num_refused": 1,
+  "total_time": 2.5,
+  "average_time": 0.8333333333333334,
+  "backend": "test-backend",
+  "symmetry_scores": [
+    0.85,
+    0.72,
+    0.45
+  ],
+  "isr_scores": [
+    15.2,
+    12.3,
+    5.1
+  ],
+  "cache_hit_rate": null
+}

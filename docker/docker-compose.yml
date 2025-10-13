@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  # Glass API with OpenAI backend (default)
+  glass-api-openai:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: glass-api-openai
+    ports:
+      - "8000:8000"
+    environment:
+      - GLASS_BACKEND=openai
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      - GLASS_TEMPERATURE=${GLASS_TEMPERATURE:-0.3}
+    volumes:
+      - ../logs:/app/logs
+      - ../metrics:/app/metrics
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    profiles:
+      - openai
+
+  # Glass API with Ollama backend (local, private)
+  glass-api-ollama:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: glass-api-ollama
+    ports:
+      - "8001:8000"
+    environment:
+      - GLASS_BACKEND=ollama
+      - OLLAMA_HOST=${OLLAMA_HOST:-http://host.docker.internal:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.1:8b}
+      - OLLAMA_TIMEOUT=${OLLAMA_TIMEOUT:-180.0}
+      - GLASS_TEMPERATURE=${GLASS_TEMPERATURE:-0.3}
+    volumes:
+      - ../logs:/app/logs
+      - ../metrics:/app/metrics
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    profiles:
+      - ollama
+
+  # Ollama service (optional - if you want Ollama in Docker too)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+    profiles:
+      - ollama-docker
+
+  # Nginx reverse proxy (optional - for load balancing)
+  nginx:
+    image: nginx:alpine
+    container_name: glass-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - glass-api-openai
+    restart: unless-stopped
+    profiles:
+      - nginx
+
+volumes:
+  ollama-data:
+    driver: local
