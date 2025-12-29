@@ -65,7 +65,8 @@ from pythea import AsyncTheaClient
 async def main() -> None:
     async with AsyncTheaClient(base_url="https://apim-reasoning-core.azure-api.net/reasoning") as client:
         print(await client.healthz())
-        resp = await client.unified_answer(question="What is 2+2?")
+        # Explicitly pass a backend; e.g. "aoai-pool", "openai", or "azure"
+        resp = await client.unified_answer(question="What is 2+2?", backend="aoai-pool")
         print(resp.get("decision"), resp.get("picked"))
 
 
