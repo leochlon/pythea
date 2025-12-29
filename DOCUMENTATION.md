@@ -55,7 +55,7 @@ package.
 ```python
 from pythea import TheaClient
 
-with TheaClient(base_url="http://localhost:8000") as client:
+with TheaClient(base_url="https://apim-reasoning-core.azure-api.net/") as client:
     print(client.healthz())
     resp = client.unified_answer(question="What is 2+2?")
     print(resp.get("decision"), resp.get("picked"))
@@ -137,7 +137,7 @@ from pythea import AsyncTheaClient
 
 
 async def main() -> None:
-    async with AsyncTheaClient(base_url="http://localhost:8000") as client:
+    async with AsyncTheaClient(base_url="https://apim-reasoning-core.azure-api.net/") as client:
         print(await client.healthz())
         resp = await client.unified_answer(question="What is 2+2?")
         print(resp.get("decision"), resp.get("picked"))
@@ -464,7 +464,7 @@ End-to-end tests (require a reachable Thea service):
 
 ```bash
 export THEA_E2E=1
-export THEA_BASE_URL="http://localhost:8000"
+export THEA_BASE_URL="https://apim-reasoning-core.azure-api.net/"
 
 pytest -q -m e2e
 ```
