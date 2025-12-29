@@ -55,7 +55,8 @@ with TheaClient(base_url="https://apim-reasoning-core.azure-api.net/reasoning") 
         m=6,
     )
 
-    print(resp.get("decision"), resp.get("picked"))
+    # /api/unified-answer returns a minimal response shape: use status/answer/reason_code
+    print(resp.get("status"), resp.get("answer"), resp.get("reason_code"))
 ```
 
 ### Asynchronous
@@ -73,11 +74,14 @@ async def main() -> None:
         # `m` controls the number of reasoning branches (diagnostic branches)
         # for the closed‑book guard path.
         resp = await client.unified_answer(question="What is 2+2?", backend="aoai-pool", m=6)
-        print(resp.get("decision"), resp.get("picked"))
+        # /api/unified-answer returns a minimal response shape: use status/answer/reason_code
+        print(resp.get("status"), resp.get("answer"), resp.get("reason_code"))
 
 
 asyncio.run(main())
 ```
+
+Note on response shape: `/api/unified-answer` returns a minimal response shape with `status`, optional `answer` (when answered), and `reason_code`. A richer response with fields like `decision`/`picked` may be available at a separate route depending on your service configuration.
 
 ### Closed‑Book Guard branching controls
 

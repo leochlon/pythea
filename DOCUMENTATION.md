@@ -60,7 +60,8 @@ with TheaClient(base_url="https://apim-reasoning-core.azure-api.net/reasoning") 
     # Explicit backend is recommended; e.g., "aoai-pool", "openai", or "azure".
     # `m` controls the number of reasoning branches (diagnostic branches) for the closed‑book guard path.
     resp = client.unified_answer(question="What is 2+2?", backend="aoai-pool", m=6)
-    print(resp.get("decision"), resp.get("picked"))
+    # /api/unified-answer returns a minimal response shape:
+    print(resp.get("status"), resp.get("answer"), resp.get("reason_code"))
 ```
 
 #### Constructor
@@ -120,6 +121,8 @@ Notes:
 - All keyword arguments with value `None` are ignored.
 - Extra keyword arguments are passed through into the JSON body unchanged.
 
+Response shape: `/api/unified-answer` returns a minimal response shape with `status` ("answered" or "abstained"), optional `answer` (when answered), and `reason_code`. A richer shape with fields like `decision`/`picked` may be available via a separate route depending on your service configuration.
+
 Branch controls (closed‑book guard):
 
 ```python
@@ -170,7 +173,8 @@ async def main() -> None:
             backend="aoai-pool",
             m=6,
         )
-        print(resp.get("decision"), resp.get("picked"))
+        # /api/unified-answer returns a minimal response shape:
+        print(resp.get("status"), resp.get("answer"), resp.get("reason_code"))
 
 
 asyncio.run(main())

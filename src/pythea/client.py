@@ -161,6 +161,8 @@ class TheaClient:
 
         if not isinstance(data, dict):
             raise TheaResponseError("unified_answer response JSON was not an object")
+        # Validate response shape (minimal vs full) and raise on inconsistencies.
+        _validate_unified_answer_response(data)
         # Return the raw object; callers can branch on available keys.
         return data  # type: ignore[return-value]
 
@@ -299,5 +301,41 @@ class AsyncTheaClient:
 
         if not isinstance(data, dict):
             raise TheaResponseError("unified_answer response JSON was not an object")
+        # Validate response shape (minimal vs full) and raise on inconsistencies.
+        _validate_unified_answer_response(data)
         # Return the raw object; callers can branch on available keys.
         return data  # type: ignore[return-value]
+
+
+def _validate_unified_answer_response(data: Mapping[str, Any]) -> None:
+    """Validate minimal vs full response shapes at runtime.
+
+    - Minimal shape (public): requires 'status' in {'answered','abstained'}.
+      If status == 'answered', 'answer' must be present and not None.
+      If status == 'abstained', 'answer' must be absent or None.
+    - Full shape (internal): requires 'decision' to be present.
+
+    Raises TheaResponseError on inconsistencies. Does not mutate the response.
+    """
+    # Minimal public shape
+    if "status" in data:
+        status = data.get("status")
+        if not isinstance(status, str):
+            raise TheaResponseError("minimal response: 'status' must be a string")
+        allowed = {"answered", "abstained"}
+        if status not in allowed:
+            raise TheaResponseError(f"minimal response: unknown status '{status}'")
+
+        has_answer_key = "answer" in data
+        answer_val = data.get("answer")
+        if status == "answered":
+            if not has_answer_key or answer_val is None:
+                raise TheaResponseError("minimal response: 'answer' must be present when status == 'answered'")
+        else:  # abstained
+            if has_answer_key and answer_val is not None:
+                raise TheaResponseError("minimal response: 'answer' must be omitted or null when status == 'abstained'")
+        return
+
+    # Full/internal shape
+    if "decision" not in data:
+        raise TheaResponseError("response had neither 'status' (minimal) nor 'decision' (full)")
