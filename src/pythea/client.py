@@ -7,7 +7,12 @@ import httpx
 
 from ._version import __version__
 from .errors import TheaHTTPError, TheaResponseError, TheaTimeoutError
-from .types import BackendCredentials, UnifiedAnswerRequest, UnifiedAnswerResponse
+from .types import (
+    BackendCredentials,
+    UnifiedAnswerRequest,
+    UnifiedAnswerResponse,
+    MinimalUnifiedAnswerResponse,
+)
 from .utils import merge_headers, normalize_base_url
 
 
@@ -96,7 +101,7 @@ class TheaClient:
         creds: Optional[BackendCredentials] = None,
         headers: Optional[Mapping[str, str]] = None,
         **kwargs: Any,
-    ) -> UnifiedAnswerResponse:
+    ) -> Union[UnifiedAnswerResponse, MinimalUnifiedAnswerResponse]:
         """POST /api/unified-answer.
 
         Everything except `question` is optional; extra keyword args are passed
@@ -156,6 +161,7 @@ class TheaClient:
 
         if not isinstance(data, dict):
             raise TheaResponseError("unified_answer response JSON was not an object")
+        # Return the raw object; callers can branch on available keys.
         return data  # type: ignore[return-value]
 
 
@@ -240,7 +246,7 @@ class AsyncTheaClient:
         creds: Optional[BackendCredentials] = None,
         headers: Optional[Mapping[str, str]] = None,
         **kwargs: Any,
-    ) -> UnifiedAnswerResponse:
+    ) -> Union[UnifiedAnswerResponse, MinimalUnifiedAnswerResponse]:
         payload: UnifiedAnswerRequest = {"question": question}
         if evidence is not None:
             payload["evidence"] = evidence
@@ -293,4 +299,5 @@ class AsyncTheaClient:
 
         if not isinstance(data, dict):
             raise TheaResponseError("unified_answer response JSON was not an object")
+        # Return the raw object; callers can branch on available keys.
         return data  # type: ignore[return-value]

@@ -72,3 +72,21 @@ class UnifiedAnswerResponse(TypedDict, total=False):
     rewritten_prompt: Optional[str]
     recommendations: Optional[List[str]]
     eg_metrics: Optional[Dict[str, Any]]
+
+
+class MinimalUnifiedAnswerResponse(TypedDict, total=False):
+    """Minimal public response returned by /api/unified-answer in many deployments.
+
+    Only includes coarse fields; intentionally omits backend/metrics/trace.
+    Compatibility fields (passed/mode/eg_metrics) may be present depending on server.
+    """
+    status: str  # "answered" | "abstained"
+    answer: Optional[str]
+    reason_code: Optional[str]
+    request_id: Optional[str]
+    rewritten_prompt: Optional[str]
+    judge_explanation: Optional[str]
+    # Optional compatibility fields
+    passed: Optional[bool]
+    mode: Optional[str]
+    eg_metrics: Optional[Dict[str, Any]]
