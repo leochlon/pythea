@@ -57,7 +57,9 @@ from pythea import TheaClient
 
 with TheaClient(base_url="https://apim-reasoning-core.azure-api.net/reasoning") as client:
     print(client.healthz())
-    resp = client.unified_answer(question="What is 2+2?")
+    # Explicit backend is recommended; e.g., "aoai-pool", "openai", or "azure".
+    # `m` controls the number of reasoning branches (diagnostic branches) for the closed‑book guard path.
+    resp = client.unified_answer(question="What is 2+2?", backend="aoai-pool", m=6)
     print(resp.get("decision"), resp.get("picked"))
 ```
 
@@ -106,14 +108,9 @@ Calls `POST /api/unified-answer`.
 ```python
 resp = client.unified_answer(
     question="What is 2+2?",
-    evidence=None,
-    backend="aoai-pool",
+    backend="aoai-pool",      # explicit backend
     interpretability=True,
-    prompt_rewrite=False,
-    creds=None,
-    # Any other JSON fields your deployment supports can be passed as kwargs:
-    m=6,
-    temperature=0.0,
+    m=6,                       # number of reasoning branches (diagnostic branches)
 )
 ```
 
@@ -122,6 +119,34 @@ Notes:
 - `question` is the only required field.
 - All keyword arguments with value `None` are ignored.
 - Extra keyword arguments are passed through into the JSON body unchanged.
+
+Branch controls (closed‑book guard):
+
+```python
+resp = client.unified_answer(
+    question="Where did Ada Lovelace work and when?",
+    backend="aoai-pool",
+    interpretability=True,
+    m=8,
+    cbg_tree_depth=2,            # branching depth (1 = flat; 2 = expand level‑1 into leaves)
+    cbg_tree_expand_per_node=3,  # max children per expanded branch
+    cbg_tree_max_expansions=6,   # overall cap on expansions
+)
+```
+
+EvidenceGuard knobs (when sending evidence):
+
+```python
+resp = client.unified_answer(
+    question="Is the claim supported by the evidence?",
+    evidence="1) ...\n2) ...",
+    backend="aoai-pool",
+    hstar=0.05,          # h* strictness (target is 1 - h*, e.g. 0.95)
+    prior_quantile=0.05, # quantile for conservative prior q_lo
+    top_logprobs=10,     # top‑k token logprobs for 1‑token probe
+    temperature=0.0,     # probe temperature
+)
+```
 
 The request/response are typed as `TypedDict` in `pythea.types`:
 
@@ -139,7 +164,12 @@ from pythea import AsyncTheaClient
 async def main() -> None:
     async with AsyncTheaClient(base_url="https://apim-reasoning-core.azure-api.net/reasoning") as client:
         print(await client.healthz())
-        resp = await client.unified_answer(question="What is 2+2?")
+        # Explicit backend and branch controls
+        resp = await client.unified_answer(
+            question="What is 2+2?",
+            backend="aoai-pool",
+            m=6,
+        )
         print(resp.get("decision"), resp.get("picked"))
 
 

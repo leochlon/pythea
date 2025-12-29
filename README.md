@@ -79,6 +79,36 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
+### Closed‑Book Guard branching controls
+
+You can control the breadth/depth of reasoning branches in closed‑book guard:
+
+```python
+resp = client.unified_answer(
+    question="Where did Ada Lovelace work and when?",
+    backend="aoai-pool",
+    interpretability=True,
+    m=8,
+    cbg_tree_depth=2,            # 1 = flat; 2 = expand high‑level branches into leaves
+    cbg_tree_expand_per_node=3,  # max children per expanded branch
+    cbg_tree_max_expansions=6,   # overall cap on expansions
+)
+```
+
+### EvidenceGuard knobs (when sending evidence)
+
+```python
+resp = client.unified_answer(
+    question="Is the claim supported by the evidence?",
+    evidence="1) ...\n2) ...",
+    backend="aoai-pool",
+    hstar=0.05,          # h* strictness (target is 1 - h*, e.g. 0.95)
+    prior_quantile=0.05, # quantile used for conservative prior q_lo
+    top_logprobs=10,     # how many top‑k logprobs to fetch for the 1‑token probe
+    temperature=0.0,     # probe temperature
+)
+```
+
 ### Azure API Management (APIM)
 
 If your Thea service is fronted by Azure APIM, pass the subscription key:
