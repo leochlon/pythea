@@ -50,7 +50,7 @@ pip install pythea
 ```python
 from pythea import TheaClient
 
-with TheaClient(base_url="https://apim-reasoning-core.azure-api.net/") as client:
+with TheaClient(base_url="https://apim-reasoning-core.azure-api.net/reasoning") as client:
     print(client.healthz())
 
     resp = client.unified_answer(
@@ -71,7 +71,7 @@ from pythea import AsyncTheaClient
 
 
 async def main() -> None:
-    async with AsyncTheaClient(base_url="https://apim-reasoning-core.azure-api.net/") as client:
+    async with AsyncTheaClient(base_url="https://apim-reasoning-core.azure-api.net/reasoning") as client:
         print(await client.healthz())
         resp = await client.unified_answer(question="What is 2+2?")
         print(resp.get("decision"), resp.get("picked"))
@@ -88,7 +88,7 @@ If your Thea service is fronted by Azure APIM, pass the subscription key:
 from pythea import TheaClient
 
 client = TheaClient(
-    base_url="https://apim-reasoning-core.azure-api.net/",
+    base_url="https://apim-reasoning-core.azure-api.net/reasoning",
     apim_subscription_key="...",
     # apim_subscription_key_header defaults to "Ocp-Apim-Subscription-Key"
 )
@@ -107,7 +107,7 @@ from pythea import TheaClient
 from pythea.errors import TheaHTTPError
 
 try:
-    with TheaClient(base_url="https://apim-reasoning-core.azure-api.net/") as client:
+    with TheaClient(base_url="https://apim-reasoning-core.azure-api.net/reasoning") as client:
         client.unified_answer(question="hello")
 except TheaHTTPError as e:
     print(e.status_code, e.request_id, e.message)
@@ -160,7 +160,7 @@ End-to-end tests require a reachable Thea service and are gated behind `THEA_E2E
 
 ```bash
 export THEA_E2E=1
-export THEA_BASE_URL="https://apim-reasoning-core.azure-api.net/"
+export THEA_BASE_URL="https://apim-reasoning-core.azure-api.net/reasoning"
 export THEA_BACKEND="aoai-pool"  # optional
 
 pytest -q -m e2e
