@@ -45,10 +45,14 @@ from pythea import TheaClient
 with TheaClient(base_url="https://apim-reasoning-core.azure-api.net/reasoning") as client:
     print(client.healthz())
 
+    # Explicit backend is recommended; e.g., "aoai-pool", "openai", or "azure".
+    # `m` controls the number of reasoning branches (diagnostic subquestions)
+    # explored by the closed‑book guard.
     resp = client.unified_answer(
         question="What is 2+2?",
         backend="aoai-pool",          # depends on your deployment
         interpretability=True,
+        m=6,
     )
 
     print(resp.get("decision"), resp.get("picked"))
@@ -65,8 +69,10 @@ from pythea import AsyncTheaClient
 async def main() -> None:
     async with AsyncTheaClient(base_url="https://apim-reasoning-core.azure-api.net/reasoning") as client:
         print(await client.healthz())
-        # Explicitly pass a backend; e.g. "aoai-pool", "openai", or "azure"
-        resp = await client.unified_answer(question="What is 2+2?", backend="aoai-pool")
+        # Explicit backend is recommended; e.g., "aoai-pool", "openai", or "azure".
+        # `m` controls the number of reasoning branches (diagnostic subquestions)
+        # for the closed‑book guard path.
+        resp = await client.unified_answer(question="What is 2+2?", backend="aoai-pool", m=6)
         print(resp.get("decision"), resp.get("picked"))
 
 
