@@ -1,0 +1,94 @@
+# pythea
+
+`pythea` is an installable Python package that contains:
+
+1) A Python client for the Thea API server (`/api/unified-answer`, `/healthz`). fileciteturn0file0
+2) Offline feature builders (QMV / permutation-mixture + Bernoulli-probe utilities) in `pythea.offline`. fileciteturn0file1
+
+## Install (local)
+
+From the extracted zip:
+
+```bash
+pip install -e .[dev]
+```
+
+If you want the optional tokenization helper used for `logit_bias` in offline probes:
+
+```bash
+pip install -e .[offline]
+```
+
+## API client quickstart
+
+```python
+from pythea import TheaClient
+
+client = TheaClient(base_url="http://localhost:8000")
+print(client.healthz())
+
+resp = client.unified_answer(
+    question="What is 2+2?",
+    backend="aoai-pool",          # pick what your deployment supports
+    interpretability=False,
+)
+print(resp.get("decision"), resp.get("picked"))
+client.close()
+```
+
+### APIM
+
+If calling through Azure API Management, you typically pass a subscription key:
+
+```python
+client = TheaClient(
+    base_url="https://YOUR-APIM-GW.example.com",
+    apim_subscription_key="...",
+)
+```
+
+## Offline features quickstart
+
+The offline utilities are model-agnostic. They need a backend that can return **token logprobs for the first generated token**, so we can implement Bernoulli (0/1) probes. fileciteturn0file1
+
+For deterministic local testing, use the included `DummyBackend`:
+
+```python
+from pythea.offline import qmv
+
+backend = qmv.DummyBackend(lambda text: 0.8)
+probe = qmv.BernoulliProbe(backend=backend, use_logit_bias=False)
+
+parts = qmv.ExchangeablePromptParts(
+    prefix="TASK",
+    blocks=["HINT A", "HINT B", "HINT C"],
+    suffix="Return 1 if predicate holds else 0.",
+)
+
+res = qmv.evaluate_permutation_family(
+    probe=probe,
+    parts=parts,
+    cfg=qmv.PermutationEvalConfig(m=6, num_bands=2, seed=0, include_identity=True),
+    prior_quantile=0.2,
+)
+
+print(res.q_bar, res.q_lo, res.js_bound)
+```
+
+## Tests
+
+Unit tests (offline + client):
+
+```bash
+pytest -q tests/unit
+```
+
+E2E tests (requires a reachable service):
+
+```bash
+export THEA_BASE_URL="http://localhost:8000"
+export THEA_BACKEND="aoai-pool"
+pytest -q -m e2e
+```
+
+E2E tests are skipped automatically unless `THEA_BASE_URL` is set.

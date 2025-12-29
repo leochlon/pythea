@@ -1,0 +1,16 @@
+LICENSE
+README.md
+pyproject.toml
+src/pythea/__init__.py
+src/pythea/_version.py
+src/pythea/client.py
+src/pythea/errors.py
+src/pythea/types.py
+src/pythea/utils.py
+src/pythea.egg-info/PKG-INFO
+src/pythea.egg-info/SOURCES.txt
+src/pythea.egg-info/dependency_links.txt
+src/pythea.egg-info/requires.txt
+src/pythea.egg-info/top_level.txt
+src/pythea/offline/__init__.py
+src/pythea/offline/qmv.py
