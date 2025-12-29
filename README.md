@@ -1,62 +1,132 @@
 # pythea
 
-`pythea` is an installable Python package that contains:
+`pythea` is a small, typed Python package with two goals:
 
-1) A Python client for the Thea API server (`/api/unified-answer`, `/healthz`). fileciteturn0file0
-2) Offline feature builders (QMV / permutation-mixture + Bernoulli-probe utilities) in `pythea.offline`. fileciteturn0file1
+1. **A lightweight client** for the **Thea Mini Reasoning API** (currently `GET /healthz` and `POST /api/unified-answer`).
+2. **Offline, model-agnostic evaluation utilities** for permutation-mixture / QMV-style probing via a **Bernoulli (0/1) first-token logprob probe**.
 
-## Install (local)
+This repo also includes a few optional security-testing scripts under [`examples/`](./examples) (not installed as part of the package).
 
-From the extracted zip:
+- **Docs:** see [`DOCUMENTATION.md`](./DOCUMENTATION.md)
+- **License:** see [`LICENSE.md`](./LICENSE.md)
+
+## Requirements
+
+- Python **3.9+**
+- `httpx>=0.24.0`
+
+## Install
+
+### From source (this repo)
 
 ```bash
-pip install -e .[dev]
+pip install -e .
 ```
 
-If you want the optional tokenization helper used for `logit_bias` in offline probes:
+Dev/test dependencies:
 
 ```bash
-pip install -e .[offline]
+pip install -e ".[dev]"
+```
+
+Optional extra used by the offline probe for OpenAI-style `logit_bias` tokenization:
+
+```bash
+pip install -e ".[offline]"
+```
+
+### From PyPI
+
+If you publish `pythea` to your package index, typical installation looks like:
+
+```bash
+pip install pythea
 ```
 
 ## API client quickstart
 
+### Synchronous
+
 ```python
 from pythea import TheaClient
 
-client = TheaClient(base_url="http://localhost:8000")
-print(client.healthz())
+with TheaClient(base_url="http://localhost:8000") as client:
+    print(client.healthz())
 
-resp = client.unified_answer(
-    question="What is 2+2?",
-    backend="aoai-pool",          # pick what your deployment supports
-    interpretability=False,
-)
-print(resp.get("decision"), resp.get("picked"))
-client.close()
+    resp = client.unified_answer(
+        question="What is 2+2?",
+        backend="aoai-pool",          # depends on your deployment
+        interpretability=True,
+    )
+
+    print(resp.get("decision"), resp.get("picked"))
 ```
 
-### APIM
-
-If calling through Azure API Management, you typically pass a subscription key:
+### Asynchronous
 
 ```python
+import asyncio
+
+from pythea import AsyncTheaClient
+
+
+async def main() -> None:
+    async with AsyncTheaClient(base_url="http://localhost:8000") as client:
+        print(await client.healthz())
+        resp = await client.unified_answer(question="What is 2+2?")
+        print(resp.get("decision"), resp.get("picked"))
+
+
+asyncio.run(main())
+```
+
+### Azure API Management (APIM)
+
+If your Thea service is fronted by Azure APIM, pass the subscription key:
+
+```python
+from pythea import TheaClient
+
 client = TheaClient(
     base_url="https://YOUR-APIM-GW.example.com",
     apim_subscription_key="...",
+    # apim_subscription_key_header defaults to "Ocp-Apim-Subscription-Key"
 )
 ```
 
-## Offline features quickstart
+### Error handling
 
-The offline utilities are model-agnostic. They need a backend that can return **token logprobs for the first generated token**, so we can implement Bernoulli (0/1) probes. fileciteturn0file1
+The client raises a small set of exceptions:
 
-For deterministic local testing, use the included `DummyBackend`:
+- `TheaHTTPError`: non-2xx response (includes `status_code` and optional `request_id`)
+- `TheaTimeoutError`: request timed out
+- `TheaResponseError`: response parsing/shape problems
+
+```python
+from pythea import TheaClient
+from pythea.errors import TheaHTTPError
+
+try:
+    with TheaClient(base_url="http://localhost:8000") as client:
+        client.unified_answer(question="hello")
+except TheaHTTPError as e:
+    print(e.status_code, e.request_id, e.message)
+```
+
+## Offline utilities quickstart (`pythea.offline.qmv`)
+
+The offline tools are **model-agnostic**. You provide a backend that can:
+
+- Generate exactly **one token**
+- Provide **first-token logprobs** (so we can implement a `0/1` Bernoulli probe)
+
+For deterministic local tests, use the included `DummyBackend`:
 
 ```python
 from pythea.offline import qmv
 
-backend = qmv.DummyBackend(lambda text: 0.8)
+# Deterministic "model": always returns q=P("1") = 0.8
+backend = qmv.DummyBackend(lambda _prompt: 0.8)
 probe = qmv.BernoulliProbe(backend=backend, use_logit_bias=False)
 
 parts = qmv.ExchangeablePromptParts(
@@ -75,7 +145,10 @@ res = qmv.evaluate_permutation_family(
 print(res.q_bar, res.q_lo, res.js_bound)
 ```
 
-## Tests
+More details (metrics, backend contract, leakage curves, contamination scoring, etc.) are in
+[`DOCUMENTATION.md`](./DOCUMENTATION.md).
+
+## Running tests
 
 Unit tests (offline + client):
 
@@ -83,12 +156,16 @@ Unit tests (offline + client):
 pytest -q tests/unit
 ```
 
-E2E tests (requires a reachable service):
+End-to-end tests require a reachable Thea service and are gated behind `THEA_E2E=1`:
 
 ```bash
+export THEA_E2E=1
 export THEA_BASE_URL="http://localhost:8000"
-export THEA_BACKEND="aoai-pool"
+export THEA_BACKEND="aoai-pool"  # optional
+
 pytest -q -m e2e
 ```
 
-E2E tests are skipped automatically unless `THEA_BASE_URL` is set.
+## License
+
+MIT — see [`LICENSE.md`](./LICENSE.md).
