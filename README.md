@@ -17,9 +17,9 @@ This repo also includes a few optional security-testing scripts under [`examples
 
 ## Install
 
-### From source (this repo)
-
 ```bash
+git clone https://github.com/leochlon/hallbayes.git
+cd hallbayes
 pip install -e .
 ```
 
@@ -33,14 +33,6 @@ Optional extra used by the offline probe for OpenAI-style `logit_bias` tokenizat
 
 ```bash
 pip install -e ".[offline]"
-```
-
-### From PyPI
-
-If you publish `pythea` to your package index, typical installation looks like:
-
-```bash
-pip install pythea
 ```
 
 ## API client quickstart
