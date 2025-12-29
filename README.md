@@ -18,8 +18,8 @@ This repo also includes a few optional security-testing scripts under [`examples
 ## Install
 
 ```bash
-git clone https://github.com/leochlon/hallbayes.git
-cd hallbayes
+git clone https://github.com/leochlon/pythea.git
+cd pythea
 pip install -e .
 ```
 
