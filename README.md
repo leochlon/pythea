@@ -1,19 +1,76 @@
 # pythea
 
-`pythea` is a small, typed Python package with two goals:
+**LLM reliability research from [Hassana Labs](https://hassana.io).**
 
-1. **A lightweight client** for the **Thea Mini Reasoning API** (currently `GET /healthz` and `POST /api/unified-answer`).
-2. **Offline, model-agnostic evaluation utilities** for permutation-mixture / QMV-style probing via a **Bernoulli (0/1) first-token logprob probe**.
+Three tools, one goal: catch models that know but don't use.
 
-This repo also includes a few optional security-testing scripts under [`examples/`](./examples) (not installed as part of the package).
+---
 
-- **Docs:** see [`DOCUMENTATION.md`](./DOCUMENTATION.md)
-- **License:** see [`LICENSE.md`](./LICENSE.md)
+## 🍓 Strawberry: Procedural Hallucination Toolkit
 
-## Requirements
+Ask Claude to count the r's in "strawberry." It writes "s-t-r-a-w-b-e-r-r-y," identifies each r, gets to 3. Then outputs "2."
 
-- Python **3.9+**
-- `httpx>=0.24.0`
+The model didn't lack information. The answer was right there—in text it generated moments earlier. The computation worked. The routing failed.
+
+This toolkit detects those failures mathematically.
+
+```bash
+pip install pythea
+python -m strawberry.factual_recall \
+  --question "Which US senators from Minnesota graduated from Princeton" \
+  --out report.json
+```
+
+**What it catches:**
+- RAG that retrieves but doesn't read
+- Chain-of-thought that cites steps it ignored
+- Self-verification that validates without checking
+- Citation confabulation (decorative sources)
+
+**How:** Scrub the cited evidence, measure confidence change. No change? The model was confabulating.
+
+[→ Full docs](./strawberry/README.md)
+
+---
+
+## 🔌 Thea API Client
+
+Lightweight client for the Thea Mini Reasoning API.
+
+```python
+from pythea import TheaClient
+
+with TheaClient(base_url="https://...") as client:
+    resp = client.unified_answer(
+        question="What is 2+2?",
+        backend="aoai-pool",
+        m=6,
+    )
+    print(resp.get("answer"))
+```
+
+[→ Full docs](./docs/CLIENT.md)
+
+---
+
+## 📊 Offline QMV Probing
+
+Model-agnostic permutation-mixture evaluation via Bernoulli first-token logprob probes.
+
+```python
+from pythea.offline import qmv
+
+res = qmv.evaluate_permutation_family(
+    probe=probe,
+    parts=parts,
+    cfg=qmv.PermutationEvalConfig(m=6, num_bands=2, seed=0),
+)
+print(res.q_bar, res.q_lo, res.js_bound)
+```
+
+[→ Full docs](./docs/QMV.md)
+
+---
 
 ## Install
 
@@ -23,182 +80,44 @@ cd pythea
 pip install -e .
 ```
 
-Dev/test dependencies:
-
+**Extras:**
 ```bash
-pip install -e ".[dev]"
+pip install -e ".[dev]"      # tests
+pip install -e ".[offline]"  # tiktoken for logit bias
+pip install -e ".[vllm]"     # local inference
 ```
 
-Optional extra used by the offline probe for OpenAI-style `logit_bias` tokenization:
+---
 
-```bash
-pip install -e ".[offline]"
+## Repo layout
+
+```
+pythea/
+├── strawberry/          # Procedural hallucination toolkit
+│   ├── README.md
+│   └── src/
+├── src/pythea/          # Thea client + QMV probing
+├── docs/                # Detailed documentation
+├── examples/
+├── tests/
+└── benchmarks/
 ```
 
-## API client quickstart
+---
 
-### Synchronous
+## Citation
 
-```python
-from pythea import TheaClient
-
-with TheaClient(base_url="https://apim-reasoning-core.azure-api.net/reasoning") as client:
-    print(client.healthz())
-
-    # Explicit backend is recommended; e.g., "aoai-pool", "openai", or "azure".
-    # `m` controls the number of reasoning branches (diagnostic branches)
-    # explored by the closed‑book guard.
-    resp = client.unified_answer(
-        question="What is 2+2?",
-        backend="aoai-pool",          # depends on your deployment
-        interpretability=True,
-        m=6,
-    )
-
-    # /api/unified-answer returns a minimal response shape: use status/answer/reason_code
-    print(resp.get("status"), resp.get("answer"), resp.get("reason_code"))
+```bibtex
+@article{hassanalabs2026procedural,
+  title={An Information-Theoretic and Causal Theory of Procedural Hallucinations},
+  author={{Hassana Labs}},
+  journal={arXiv preprint},
+  year={2026}
+}
 ```
 
-### Asynchronous
-
-```python
-import asyncio
-
-from pythea import AsyncTheaClient
-
-
-async def main() -> None:
-    async with AsyncTheaClient(base_url="https://apim-reasoning-core.azure-api.net/reasoning") as client:
-        print(await client.healthz())
-        # Explicit backend is recommended; e.g., "aoai-pool", "openai", or "azure".
-        # `m` controls the number of reasoning branches (diagnostic branches)
-        # for the closed‑book guard path.
-        resp = await client.unified_answer(question="What is 2+2?", backend="aoai-pool", m=6)
-        # /api/unified-answer returns a minimal response shape: use status/answer/reason_code
-        print(resp.get("status"), resp.get("answer"), resp.get("reason_code"))
-
-
-asyncio.run(main())
-```
-
-Note on response shape: `/api/unified-answer` returns a minimal response shape with `status`, optional `answer` (when answered), and `reason_code`. A richer response with fields like `decision`/`picked` may be available at a separate route depending on your service configuration.
-
-### Closed‑Book Guard branching controls
-
-You can control the breadth/depth of reasoning branches in closed‑book guard:
-
-```python
-resp = client.unified_answer(
-    question="Where did Ada Lovelace work and when?",
-    backend="aoai-pool",
-    interpretability=True,
-    m=8,
-    cbg_tree_depth=2,            # 1 = flat; 2 = expand high‑level branches into leaves
-    cbg_tree_expand_per_node=3,  # max children per expanded branch
-    cbg_tree_max_expansions=6,   # overall cap on expansions
-)
-```
-
-### EvidenceGuard knobs (when sending evidence)
-
-```python
-resp = client.unified_answer(
-    question="Is the claim supported by the evidence?",
-    evidence="1) ...\n2) ...",
-    backend="aoai-pool",
-    hstar=0.05,          # h* strictness (target is 1 - h*, e.g. 0.95)
-    prior_quantile=0.05, # quantile used for conservative prior q_lo
-    top_logprobs=10,     # how many top‑k logprobs to fetch for the 1‑token probe
-    temperature=0.0,     # probe temperature
-)
-```
-
-### Azure API Management (APIM)
-
-If your Thea service is fronted by Azure APIM, pass the subscription key:
-
-```python
-from pythea import TheaClient
-
-client = TheaClient(
-    base_url="https://apim-reasoning-core.azure-api.net/reasoning",
-    apim_subscription_key="...",
-    # apim_subscription_key_header defaults to "Ocp-Apim-Subscription-Key"
-)
-```
-
-### Error handling
-
-The client raises a small set of exceptions:
-
-- `TheaHTTPError`: non-2xx response (includes `status_code` and optional `request_id`)
-- `TheaTimeoutError`: request timed out
-- `TheaResponseError`: response parsing/shape problems
-
-```python
-from pythea import TheaClient
-from pythea.errors import TheaHTTPError
-
-try:
-    with TheaClient(base_url="https://apim-reasoning-core.azure-api.net/reasoning") as client:
-        client.unified_answer(question="hello")
-except TheaHTTPError as e:
-    print(e.status_code, e.request_id, e.message)
-```
-
-## Offline utilities quickstart (`pythea.offline.qmv`)
-
-The offline tools are **model-agnostic**. You provide a backend that can:
-
-- Generate exactly **one token**
-- Provide **first-token logprobs** (so we can implement a `0/1` Bernoulli probe)
-
-For deterministic local tests, use the included `DummyBackend`:
-
-```python
-from pythea.offline import qmv
-
-# Deterministic "model": always returns q=P("1") = 0.8
-backend = qmv.DummyBackend(lambda _prompt: 0.8)
-probe = qmv.BernoulliProbe(backend=backend, use_logit_bias=False)
-
-parts = qmv.ExchangeablePromptParts(
-    prefix="TASK",
-    blocks=["HINT A", "HINT B", "HINT C"],
-    suffix="Return 1 if predicate holds else 0.",
-)
-
-res = qmv.evaluate_permutation_family(
-    probe=probe,
-    parts=parts,
-    cfg=qmv.PermutationEvalConfig(m=6, num_bands=2, seed=0, include_identity=True),
-    prior_quantile=0.2,
-)
-
-print(res.q_bar, res.q_lo, res.js_bound)
-```
-
-More details (metrics, backend contract, leakage curves, contamination scoring, etc.) are in
-[`DOCUMENTATION.md`](./DOCUMENTATION.md).
-
-## Running tests
-
-Unit tests (offline + client):
-
-```bash
-pytest -q tests/unit
-```
-
-End-to-end tests require a reachable Thea service and are gated behind `THEA_E2E=1`:
-
-```bash
-export THEA_E2E=1
-export THEA_BASE_URL="https://apim-reasoning-core.azure-api.net/reasoning"
-export THEA_BACKEND="aoai-pool"  # optional
-
-pytest -q -m e2e
-```
+---
 
 ## License
 
-MIT — see [`LICENSE.md`](./LICENSE.md).
+MIT — see [LICENSE.md](./LICENSE.md)

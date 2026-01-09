@@ -1,4 +1,4 @@
-LICENSE
+LICENSE.md
 README.md
 pyproject.toml
 src/pythea/__init__.py
@@ -12,5 +12,7 @@ src/pythea.egg-info/SOURCES.txt
 src/pythea.egg-info/dependency_links.txt
 src/pythea.egg-info/requires.txt
 src/pythea.egg-info/top_level.txt
+src/pythea/hallucination_detector/__init__.py
+src/pythea/hallucination_detector/evidence_guard.py
 src/pythea/offline/__init__.py
 src/pythea/offline/qmv.py

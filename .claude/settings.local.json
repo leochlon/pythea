@@ -1,7 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python benchmark_cot_scaling_fixed.py:*)"
+      "Bash(python benchmark_cot_scaling_fixed.py:*)",
+      "Bash(python -m py_compile:*)",
+      "Bash(python3:*)",
+      "Bash(grep:*)",
+      "Bash(PYTHONPATH=\"strawberry/src:$PYTHONPATH\" python3:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ]
   }
 }

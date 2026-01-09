@@ -4,16 +4,18 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pythea"
-version = "0.2.0"
-description = "Python client + offline utilities for the Thea Mini Reasoning API"
+version = "0.3.0"
+description = "LLM reliability research: procedural hallucination detection + Thea API client"
 readme = "README.md"
 requires-python = ">=3.9"
 authors = [
-  {name = "Thea Team"}
+  {name = "Hassana Labs"}
 ]
 license = {text = "MIT"}
 dependencies = [
   "httpx>=0.24.0",
+  "openai>=1.0.0",
+  "numpy>=1.20.0",
 ]
 
 [project.optional-dependencies]
@@ -22,17 +24,18 @@ dev = [
   "pytest-cov>=4.0",
   "pytest-asyncio>=0.21.0",
 ]
-
-# Optional helper for OpenAI-style logit_bias tokenization in offline probes.
 offline = [
   "tiktoken>=0.6.0",
+]
+vllm = [
+  "vllm>=0.4.0",
 ]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["src", "strawberry/src"]
 
 [tool.pytest.ini_options]
 addopts = "-q"
