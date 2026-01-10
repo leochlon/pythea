@@ -26,7 +26,7 @@ claude mcp add hallucination-detector \
 claude mcp list
 ```
 
-Then ask Claude: *"Check if my analysis is hallucinated"* or *"Verify my claims against the source code"*
+Then ask Claude: *"Use detect_hallucination on the root cause you just generated"*
 
 ---
 
