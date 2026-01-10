@@ -1,0 +1,3 @@
+[console_scripts]
+hallucination-detector-mcp = strawberry.mcp_server:main
+strawberry = strawberry.cli:main
