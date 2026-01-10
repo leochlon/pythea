@@ -97,16 +97,39 @@ Spans:
 
 ## What It Catches
 
+**Citation & Evidence Failures:**
 - Phantom citations (made-up references)
 - Confabulated documentation details
+- Evidence-independent answers (training data bleed)
+- Partial evidence (claims exceed what's supported)
+- Multi-source conflation (inventing connections between sources)
+
+**Code Reading Failures:**
 - Stack trace misreads
 - Config value misreads
-- Negation blindness
+- Negation blindness ("NOT" missed)
 - Lying comments (code contradicts comment)
-- Incomplete error handling
-- Docker port confusion
+- SQL join/schema misreads
+- Git merge conflict residue
+- Environment variable override misses (.env.local)
+- Middleware order bugs
+
+**Root Cause Analysis Failures:**
+- Correlation claimed as causation
+- Interpretive leaps stated as fact
+- Prescriptive claims disguised as observations
+- Unverified causal chains
+
+**DevOps & Config Failures:**
+- Docker port confusion (host:container)
 - Stale package lock mismatches
-- External knowledge bleed
+- Version mismatch attribution
+- Git misattribution (wrong author/commit)
+
+**Test & Verification Failures:**
+- Test output misinterpretation
+- Test mock assumptions (mock ≠ production)
+- Incomplete error handling assumptions
 
 ---
 
