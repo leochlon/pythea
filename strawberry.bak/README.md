@@ -22,7 +22,7 @@ The core insight: scrub the cited evidence, measure confidence change. No change
 ## Install
 
 ```bash
-cd binding_routing_toolkit
+cd strawberry_toolkit
 pip install -e .
 ```
 
@@ -42,7 +42,7 @@ The flagship use case: detect when a model's citations don't actually support it
 ```bash
 export OPENAI_API_KEY=...
 
-python -m binding_routing.factual_recall \
+python -m strawberry.factual_recall \
   --backend openai \
   --generator_model gpt-4o-mini \
   --question "Which US senators from Minnesota graduated from Princeton" \
@@ -80,7 +80,7 @@ python -m binding_routing.factual_recall \
 Test how well models bind values to variables across distance.
 
 ```bash
-binding-routing run \
+strawberry run \
   --backend openai \
   --model gpt-4o-2024-08-06 \
   --n 200 \
@@ -107,7 +107,7 @@ binding-routing run \
 Detect when reasoning traces don't support their conclusions.
 
 ```bash
-binding-routing cot \
+strawberry cot \
   --backend openai \
   --generator_model gpt-4o-mini \
   --verifier_model gpt-4o-mini \
@@ -120,7 +120,7 @@ binding-routing cot \
 **With deliberation sweep** (measure answer drift vs reasoning length):
 
 ```bash
-binding-routing cot \
+strawberry cot \
   --backend openai \
   --generator_model gpt-4o-mini \
   --verifier_model gpt-4o-mini \
@@ -135,8 +135,8 @@ binding-routing cot \
 ## Python API
 
 ```python
-from binding_routing.tasks import generate_dataset
-from binding_routing.eval import run_eval
+from strawberry.tasks import generate_dataset
+from strawberry.eval import run_eval
 
 # Generate synthetic binding task
 items = generate_dataset(n=50, distance_tokens=512, M=10, query_rule="FIRST", seed=0)
@@ -171,8 +171,8 @@ See the paper for proofs and empirical validation across Qwen, Llama, and Gemma.
 ## Repo layout
 
 ```
-src/binding_routing/
-├── cli.py              # binding-routing CLI
+src/strawberry/
+├── cli.py              # strawberry CLI
 ├── tasks.py            # Synthetic prompt generation
 ├── eval.py             # Evaluation runner + null interventions
 ├── stage_ab.py         # Stage 2A/2B logprob analysis
@@ -189,7 +189,7 @@ src/binding_routing/
 ## vLLM usage
 
 ```bash
-python -m binding_routing.factual_recall \
+python -m strawberry.factual_recall \
   --backend vllm \
   --generator_model meta-llama/Meta-Llama-3.1-8B-Instruct \
   --question "..." \

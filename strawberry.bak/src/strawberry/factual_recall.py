@@ -83,7 +83,7 @@ try:
     from strawberry.trace_budget import BudgetResult, score_trace_budget, scrub_spans_by_id
 except Exception as e:
     raise SystemExit(
-        "Failed to import strawberry_toolkit.\n"
+        "Failed to import strawberry.\n"
         "- If you're running from the repo root: `pip install -e .`\n"
         "- Or ensure `src/` is on PYTHONPATH.\n"
         f"Import error: {e}"

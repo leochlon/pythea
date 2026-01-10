@@ -1,15 +1,15 @@
 
 """
-CLI for the binding-routing toolkit.
+CLI for the strawberry toolkit.
 
 Examples
 --------
 OpenAI backend:
   export OPENAI_API_KEY=...
-  binding-routing run --backend openai --model gpt-4o-2024-08-06 --n 200 --M 10 --distance 512 --query FIRST --null SCRUB_FIRST
+  strawberry run --backend openai --model gpt-4o-2024-08-06 --n 200 --M 10 --distance 512 --query FIRST --null SCRUB_FIRST
 
 Local vLLM backend (GPU):
-  binding-routing run --backend vllm --model meta-llama/Meta-Llama-3.1-8B-Instruct --vllm_tensor_parallel 2 --n 400 --distance 1024
+  strawberry run --backend vllm --model meta-llama/Meta-Llama-3.1-8B-Instruct --vllm_tensor_parallel 2 --n 400 --distance 1024
 """
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ def _add_backend_args(p: argparse.ArgumentParser):
 
 
 def main():
-    parser = argparse.ArgumentParser(prog="binding-routing")
+    parser = argparse.ArgumentParser(prog="strawberry")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     run = sub.add_parser("run", help="Run a synthetic proximity binding eval")

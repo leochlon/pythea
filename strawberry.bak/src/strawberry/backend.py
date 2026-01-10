@@ -18,13 +18,13 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence
 import concurrent.futures as cf
 
-from .openai_backend import ModelChoice, StructuredResult, TextResult, call_text_chat
+from .openai_backend import ModelChoice, StructuredResult, TextResult
 from . import openai_backend as oai
 
 
 @dataclass
 class BackendConfig:
-    kind: str = "openai"  # "openai", "vllm", or "aoai_pool"
+    kind: str = "openai"  # "openai" or "vllm"
     max_concurrency: int = 16
     timeout_s: Optional[float] = None
     # OpenAI-compatible server knobs (optional)
@@ -36,9 +36,6 @@ class BackendConfig:
     vllm_dtype: str = "bfloat16"
     vllm_gpu_memory_utilization: float = 0.90
     vllm_trust_remote_code: bool = True
-    # AOAI pool knobs (only used when kind="aoai_pool")
-    aoai_pool_json_path: Optional[str] = None
-    aoai_pool_max_attempts: Optional[int] = None
 
 
 class OpenAIBackend:
@@ -48,8 +45,7 @@ class OpenAIBackend:
         self.cfg = cfg
 
     def call_text(self, **kwargs: Any) -> TextResult:
-        # Use Chat Completions API for reliable logprobs support
-        return call_text_chat(
+        return oai.call_text(
             **kwargs,
             timeout_s=self.cfg.timeout_s,
             base_url=self.cfg.base_url,
@@ -111,15 +107,4 @@ def make_backend(cfg: BackendConfig, *, model_hint: Optional[str] = None):
             gpu_memory_utilization=cfg.vllm_gpu_memory_utilization,
             trust_remote_code=cfg.vllm_trust_remote_code,
         )
-    if kind == "aoai_pool":
-        if cfg.aoai_pool_json_path is None:
-            raise ValueError("aoai_pool backend requires aoai_pool_json_path.")
-        from .aoai_pool_backend import AoaiPoolBackend, AoaiPoolConfig
-        pool_cfg = AoaiPoolConfig(
-            pool_json_path=cfg.aoai_pool_json_path,
-            max_concurrency=cfg.max_concurrency,
-            timeout_s=cfg.timeout_s,
-            max_attempts=cfg.aoai_pool_max_attempts,
-        )
-        return AoaiPoolBackend(pool_cfg)
     raise ValueError(f"Unknown backend kind: {cfg.kind!r}")
