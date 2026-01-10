@@ -140,13 +140,13 @@ def _evidence_schema(max_spans: int) -> Dict[str, Any]:
                         "source": {"type": "string"},
                         "excerpt": {"type": "string"},
                     },
-                    "required": ["sid", "excerpt"],
+                    "required": ["sid", "excerpt", "source"],
                     "additionalProperties": False,
                 },
             },
             "notes": {"type": "string"},
         },
-        "required": ["spans"],
+        "required": ["spans", "notes"],
         "additionalProperties": False,
     }
 
@@ -162,7 +162,7 @@ def _answer_schema() -> Dict[str, Any]:
             "abstain": {"type": "boolean"},
             "notes": {"type": "string"},
         },
-        "required": ["answer", "claim", "cites", "abstain"],
+        "required": ["answer", "claim", "cites", "confidence", "abstain", "notes"],
         "additionalProperties": False,
     }
 
