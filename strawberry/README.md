@@ -95,27 +95,18 @@ Spans:
 
 ---
 
-## Test Results
+## What It Catches
 
-| Test Suite | Pass Rate |
-|------------|-----------|
-| Core Functionality | 100% |
-| Practical Scenarios | 75% |
-| Realistic Scenarios | 50% |
-
-**Overall Grade: B** — Strong on textual/citation verification, weaker on semantic analysis.
-
-### Strengths
-- Catches phantom citations
-- Detects confabulated details
-- Flags external knowledge bleed
-- Handles negation well
-
-### Limitations
-- Language-specific semantics (JS mutation, floats)
-- Mock vs production behavior
-- Temporal/transaction logic
-- Logic inversions
+- Phantom citations (made-up references)
+- Confabulated documentation details
+- Stack trace misreads
+- Config value misreads
+- Negation blindness
+- Lying comments (code contradicts comment)
+- Incomplete error handling
+- Docker port confusion
+- Stale package lock mismatches
+- External knowledge bleed
 
 ---
 
