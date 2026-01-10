@@ -95,21 +95,6 @@ Spans:
 
 ---
 
-## Backends
-
-### OpenAI API (default)
-```bash
-export OPENAI_API_KEY=sk-...
-python -m strawberry.mcp_server
-```
-
-### Azure OpenAI Pool
-```bash
-python -m strawberry.mcp_server /path/to/aoai_pool.json
-```
-
----
-
 ## Test Results
 
 | Test Suite | Pass Rate |
@@ -196,7 +181,6 @@ results = run_eval(items=items, model="gpt-4o-2024-08-06", null_mode="SCRUB_FIRS
 ```
 src/strawberry/
 ├── mcp_server.py       # MCP server for Claude Code
-├── aoai_pool_backend.py # Azure OpenAI pool adapter
 ├── trace_budget.py     # Scrub + p0/p1 + budget calculations
 ├── factual_recall.py   # Factual recall auditor
 ├── cot_detector.py     # Trace hallucination detection
@@ -213,9 +197,7 @@ src/strawberry/
 
 ### v0.2.0 (2026-01-10)
 - Added MCP server for Claude Code integration
-- Added Azure OpenAI pool backend
 - Added `detect_hallucination` and `audit_trace_budget` tools
-- Python requirement relaxed to >=3.9
 
 ---
 
