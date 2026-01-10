@@ -121,9 +121,6 @@ source .venv/bin/activate
 
 # Install with MCP support
 pip install -e ".[mcp]"
-
-# If using Azure OpenAI pool, also install:
-pip install -e ".[mcp,aoai]"
 ```
 
 ## Claude Code Registration
