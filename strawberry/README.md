@@ -47,6 +47,31 @@ Spans:
 - S1: "try: ... except: raise"
 ```
 
+### `check_entropy_confidence`
+
+Real-time confidence scoring from output entropy — no citations needed.
+
+**Example prompt:**
+```
+Use check_entropy_confidence to check: "What color is the sky on a clear day?"
+```
+
+**Result:**
+```json
+{
+  "answer": "The sky appears blue due to Rayleigh scattering...",
+  "confidence": {
+    "score": 0.718,
+    "level": "medium",
+    "factual_p95": 0.392,
+    "expressive_p95": 0.962
+  },
+  "flagged": false
+}
+```
+
+Uses **dual entropy** — separates factual uncertainty (about answers) from expressive uncertainty (about phrasing). High expressive entropy indicates expertise, not confusion.
+
 ### `audit_trace_budget`
 
 More reliable - you provide pre-parsed claims with explicit citations.
@@ -190,24 +215,70 @@ results = run_eval(items=items, model="gpt-4o-2024-08-06", null_mode="SCRUB_FIRS
 
 ---
 
+## Benchmarking
+
+### Dual Entropy Benchmark
+
+Compare max entropy vs factual-first-mention entropy:
+
+```bash
+# Install spaCy for NER-based token classification
+pip install spacy
+python -m spacy download en_core_web_sm
+
+# Run benchmark
+python benchmark_dual_entropy.py
+```
+
+Results saved to `results/dual_entropy_benchmark_*.json`.
+
+### TruthfulQA Validation
+
+Train and evaluate on TruthfulQA dataset:
+
+```bash
+# Install dependencies
+pip install datasets scikit-learn
+
+# Run validation
+python truthfulqa_entropy_training.py
+```
+
+Results saved to `results/truthfulqa_entropy_*.json` and `results/entropy_classifier_*.json`.
+
+---
+
 ## Repo Layout
 
 ```
 src/strawberry/
-├── mcp_server.py       # MCP server for Claude Code
-├── trace_budget.py     # Scrub + p0/p1 + budget calculations
-├── factual_recall.py   # Factual recall auditor
-├── cot_detector.py     # Trace hallucination detection
-├── backend.py          # Backend abstraction
-├── openai_backend.py   # OpenAI API implementation
-├── tasks.py            # Synthetic prompt generation
-├── eval.py             # Evaluation runner
-└── metrics.py          # KL, bits-to-trust, Fano bounds
+├── mcp_server.py          # MCP server for Claude Code
+├── entropy_confidence.py  # Dual entropy confidence scoring
+├── trace_budget.py        # Scrub + p0/p1 + budget calculations
+├── factual_recall.py      # Factual recall auditor
+├── cot_detector.py        # Trace hallucination detection
+├── backend.py             # Backend abstraction
+├── openai_backend.py      # OpenAI API implementation
+├── tasks.py               # Synthetic prompt generation
+├── eval.py                # Evaluation runner
+└── metrics.py             # KL, bits-to-trust, Fano bounds
+
+# Benchmarks
+benchmark_entropy.py           # Basic entropy overhead benchmark
+benchmark_dual_entropy.py      # Dual entropy comparison
+truthfulqa_entropy_training.py # TruthfulQA validation
 ```
 
 ---
 
 ## Changelog
+
+### v0.2.1 (2026-01-11)
+- Added **dual entropy confidence scoring** (`check_entropy_confidence`)
+- Separates factual entropy from expressive entropy to reduce false positives
+- Added spaCy NER integration for token classification
+- Added TruthfulQA validation script
+- Benchmark results: 7/11 → 0/11 false positives
 
 ### v0.2.0 (2026-01-10)
 - Added MCP server for Claude Code integration
