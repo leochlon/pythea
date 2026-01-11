@@ -15,6 +15,7 @@ dependencies = [
   "tqdm>=4.66",
   "jsonschema>=4.0",
   "requests>=2.28",
+  "spacy>=3.7.0",
 ]
 
 [project.optional-dependencies]

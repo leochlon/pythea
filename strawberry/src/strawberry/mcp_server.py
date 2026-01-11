@@ -3,8 +3,13 @@
 MCP server: hallucination / citation confabulation detector.
 
 Exposes:
-  - detect_hallucination(answer, spans, ...)
-  - audit_trace_budget(steps, spans, ...)
+  - detect_hallucination(answer, spans, ...) - Budget gap analysis for citations
+  - audit_trace_budget(steps, spans, ...) - Step-by-step budget verification
+  - check_entropy_confidence(query, ...) - Output entropy confidence (NEW)
+
+Two complementary signals:
+  - Budget gap: "Does cited evidence support this claim?" (post-hoc verification)
+  - Entropy: "How confident was the model?" (real-time generation signal)
 
 Supports two backends:
   - OpenAI API (default): Set OPENAI_API_KEY environment variable
@@ -499,6 +504,97 @@ def create_mcp_server(pool_json_path: Optional[str] = None):
             timeout_s=timeout_s,
             units=units,
         )
+
+    @mcp.tool()
+    def check_entropy_confidence(
+        query: str,
+        model: str = "gpt-4o-mini",
+        task_type: str = "factual",
+        temperature: float = 0.7,
+        max_tokens: int = 100,
+        timeout_s: float = 30.0,
+    ) -> Dict[str, Any]:
+        """
+        Generate an answer and compute entropy-based confidence score.
+
+        Unlike detect_hallucination (which requires citations/sources),
+        this tool checks confidence from output entropy alone - useful for
+        quick fact-checks without citation infrastructure.
+
+        Based on empirical validation across 4 architectures:
+        - Llama 3.1 70B: t=-8.64, d=-2.38
+        - GPT-4-turbo: t=-7.05, d=-2.37
+        - Lower entropy = more likely correct
+
+        Args:
+            query: Question or claim to check.
+            model: Model for generation (default: gpt-4o-mini, cheapest with logprobs).
+            task_type: Type of task - affects flagging threshold.
+                       Options: factual, math, code, creative, general.
+            temperature: Sampling temperature (default 0.7).
+            max_tokens: Maximum tokens to generate.
+            timeout_s: Request timeout in seconds.
+
+        Returns:
+            Dict with:
+            - answer: The generated response
+            - confidence: {score, level, max_entropy, mean_entropy}
+            - flagged: Whether entropy indicates low confidence
+            - should_verify: Whether human verification is recommended
+        """
+        from .entropy_confidence import check_entropy_confidence_sync
+
+        # Validate task_type
+        valid_task_types = {"factual", "math", "code", "creative", "general"}
+        if task_type not in valid_task_types:
+            logger.warning(f"Unknown task_type '{task_type}', using 'general'")
+            task_type = "general"
+
+        try:
+            return check_entropy_confidence_sync(
+                query=query,
+                model=model,
+                task_type=task_type,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                timeout_s=timeout_s,
+            )
+        except ValueError as e:
+            # Handle missing API key or empty query
+            return {
+                "answer": "",
+                "confidence": {
+                    "score": 0.0,
+                    "level": "error",
+                    "max_entropy": 0.0,
+                    "mean_entropy": 0.0,
+                    "n_tokens": 0,
+                },
+                "flagged": True,
+                "flag_reason": str(e),
+                "should_verify": True,
+                "model": model,
+                "task_type": task_type,
+                "error": str(e),
+            }
+        except Exception as e:
+            logger.exception(f"Unexpected error in check_entropy_confidence: {e}")
+            return {
+                "answer": "",
+                "confidence": {
+                    "score": 0.0,
+                    "level": "error",
+                    "max_entropy": 0.0,
+                    "mean_entropy": 0.0,
+                    "n_tokens": 0,
+                },
+                "flagged": True,
+                "flag_reason": f"Unexpected error: {type(e).__name__}: {e}",
+                "should_verify": True,
+                "model": model,
+                "task_type": task_type,
+                "error": str(e),
+            }
 
     return mcp
 
