@@ -1,0 +1,14 @@
+benchmarks/benchmark_stark_prime_pool_optimized.py
+.DS_Store
+.venv/
+proof_agent_runs/
+proof_attack_runs/
+planning_runs/
+**/.latexmk/
+**/*.aux
+**/*.log
+**/*.out
+**/*.toc
+**/*.pdf
+
+.mcp-venv/
