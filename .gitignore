@@ -12,3 +12,7 @@ planning_runs/
 **/*.pdf
 
 .mcp-venv/
+
+__pycache__/
+*.pyc
+*.egg-info/
