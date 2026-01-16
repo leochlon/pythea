@@ -421,6 +421,29 @@ def _audit_steps_or_raise(
     return report
 
 
+def _require_cited_steps(steps: List[Dict[str, Any]]) -> None:
+    if not steps:
+        raise ValueError("steps must be non-empty")
+    missing: List[str] = []
+    for i, st in enumerate(steps):
+        claim = str(st.get("claim", "")).strip()
+        cites = st.get("cites")
+        cite_list = cites if isinstance(cites, list) else []
+        cite_list = [str(c).strip() for c in cite_list if str(c).strip()]
+        parts: List[str] = []
+        if not claim:
+            parts.append("claim")
+        if not cite_list:
+            parts.append("cites")
+        if parts:
+            missing.append(f"step[{i}] missing {', '.join(parts)}")
+    if missing:
+        raise ValueError(
+            "Each microplan step must include a non-empty 'claim' and 'cites' list. "
+            + "; ".join(missing)
+        )
+
+
 def _require_allowed_cmd(cmd0: str, *, allow_unsafe: bool) -> None:
     if allow_unsafe or os.environ.get("RESEARCH_MCP_ALLOW_UNSAFE") == "1":
         return
@@ -857,6 +880,7 @@ def create_mcp_server(pool_json_path: Optional[str] = None):
         """Audit and store a microplan. Required before any execution tools."""
         STATE.require_loaded()
         STATE.require_no_pending_checkin()
+        _require_cited_steps(steps)
         report = _audit_steps_or_raise(
             steps=steps,
             verifier_model=verifier_model,
