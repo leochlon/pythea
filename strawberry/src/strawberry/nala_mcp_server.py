@@ -881,13 +881,21 @@ def create_mcp_server(pool_json_path: Optional[str] = None):
         STATE.require_loaded()
         STATE.require_no_pending_checkin()
         _require_cited_steps(steps)
-        report = _audit_steps_or_raise(
-            steps=steps,
-            verifier_model=verifier_model,
-            default_target=default_target,
-            pool_json_path=pool_json_path,
-            units=units,
-        )
+        try:
+            report = _audit_steps_or_raise(
+                steps=steps,
+                verifier_model=verifier_model,
+                default_target=default_target,
+                pool_json_path=pool_json_path,
+                units=units,
+            )
+        except AuditTraceBudgetError as exc:
+            return {
+                "ok": False,
+                "plan_version": STATE.plan_version,
+                "audit": exc.report,
+                "error": str(exc),
+            }
         STATE.set_plan(steps)
         return {"ok": True, "plan_version": STATE.plan_version, "audit": report}
 
