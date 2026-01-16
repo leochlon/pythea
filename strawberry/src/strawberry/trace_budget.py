@@ -139,6 +139,25 @@ def scrub_spans_by_id(spans: Sequence[Any], cites: Sequence[str], *, placeholder
     return out
 
 
+def _select_context_spans(*, spans: Sequence[Any], cites: Sequence[str], mode: str) -> List[Any]:
+    """Select which spans to include in the verifier prompt.
+
+    Modes:
+      - "all": include the full span list (historical behavior).
+      - "cited": include only spans whose sid is in `cites`.
+
+    This is primarily a performance safeguard: passing thousands of spans into the
+    verifier prompt for every claim can explode token usage.
+    """
+    m = (mode or "all").strip().lower()
+    if m in {"all", "full"}:
+        return list(spans)
+    if m in {"cited", "cite", "citations", "cites"}:
+        cset = {str(c) for c in cites}
+        return [s for s in spans if str(getattr(s, "sid")) in cset]
+    raise ValueError(f"Unknown context_mode: {mode!r}")
+
+
 def build_yes_prompt(*, spans: Sequence[Any], claim: str) -> str:
     # IMPORTANT: mask non-assertive spans (questions/instructions) by default.
     # They do not entail their presuppositions and otherwise cause false YES.
@@ -239,6 +258,7 @@ def score_trace_budget(
     temperature: float = 0.0,
     top_logprobs: int = 10,
     placeholder: str = "[REDACTED]",
+    context_mode: str = "all",
     reasoning: Optional[Dict[str, Any]] = None,
 ) -> List[BudgetResult]:
     """Score all trace steps with a batched posterior/prior budget computation.
@@ -273,13 +293,15 @@ def score_trace_budget(
         cites_list.append(cites)
         targets.append(target)
 
-        post_prompts.append(build_yes_prompt(spans=spans, claim=claim))
+        ctx_spans = _select_context_spans(spans=spans, cites=cites, mode=context_mode)
+
+        post_prompts.append(build_yes_prompt(spans=ctx_spans, claim=claim))
 
         if cites:
-            null_spans = scrub_spans_by_id(spans, cites, placeholder=placeholder)
+            null_spans = scrub_spans_by_id(ctx_spans, cites, placeholder=placeholder)
         else:
-            # If no citations, define null as "no evidence": scrub all spans.
-            null_spans = scrub_spans_by_id(spans, [getattr(s, "sid") for s in spans], placeholder=placeholder)
+            # If no citations, define null as "no evidence": scrub all provided context spans.
+            null_spans = scrub_spans_by_id(ctx_spans, [getattr(s, "sid") for s in ctx_spans], placeholder=placeholder)
 
         prior_prompts.append(build_yes_prompt(spans=null_spans, claim=claim))
 

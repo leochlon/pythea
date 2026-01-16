@@ -154,6 +154,18 @@ class RunState:
         self.attempts: List[Dict[str, Any]] = []
         self.microplan: Optional[List[Dict[str, Any]]] = None
         self.plan_version: int = 0
+        # After every execution (cmd/build/fetch/etc.) we force a
+        # "check-in" step before the agent is allowed to propose the next
+        # microplan. This prevents the failure mode where a plan is audited,
+        # an action is taken, but the model doesn't actually read/validate the
+        # tool output and drifts away from the intended microplan.
+        #
+        # Shape:
+        #   {
+        #     "attempt_id": int,
+        #     "ts": float,
+        #   }
+        self.pending_checkin: Optional[Dict[str, Any]] = None
 
     # ---------- persistence ----------
     def _state_obj(self) -> Dict[str, Any]:
@@ -173,6 +185,7 @@ class RunState:
             "attempts": self.attempts,
             "microplan": self.microplan,
             "plan_version": self.plan_version,
+            "pending_checkin": self.pending_checkin,
         }
 
     def save(self) -> None:
@@ -204,6 +217,7 @@ class RunState:
         self.attempts = list(data.get("attempts") or [])
         self.microplan = data.get("microplan")
         self.plan_version = int(data.get("plan_version") or 0)
+        self.pending_checkin = data.get("pending_checkin")
 
     # ---------- helpers ----------
     def require_loaded(self) -> Tuple[Path, Path]:
@@ -269,9 +283,19 @@ class RunState:
         self.save()
 
     def set_plan(self, steps: List[Dict[str, Any]]) -> None:
+        self.require_no_pending_checkin()
         self.microplan = steps
         self.plan_version += 1
         self.save()
+
+    def require_no_pending_checkin(self) -> None:
+        if self.pending_checkin is None:
+            return
+        attempt_id = self.pending_checkin.get("attempt_id")
+        raise RuntimeError(
+            "A tool was executed, but the run is still pending a post-action check-in. "
+            f"Call checkin_last_action(...) first (pending attempt_id={attempt_id})."
+        )
 
     def require_plan_step(self, idx: int) -> Dict[str, Any]:
         if not self.microplan:
@@ -280,18 +304,64 @@ class RunState:
             raise IndexError(f"plan_step_idx {idx} out of range (0..{len(self.microplan)-1})")
         return self.microplan[idx]
 
-    def invalidate_plan_after_execution(self, *, tool: str, note: str, span_id: Optional[str] = None) -> None:
-        self.attempts.append(
-            {
-                "ts": _now(),
-                "tool": tool,
-                "note": note,
-                "span_id": span_id,
-                "plan_version": self.plan_version,
-            }
-        )
+    def invalidate_plan_after_execution(
+        self,
+        *,
+        tool: str,
+        note: str,
+        plan_step_idx: int,
+        step_snapshot: Optional[Dict[str, Any]] = None,
+        span_id: Optional[str] = None,
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> int:
+        """Record an execution attempt, invalidate the current microplan, and require a check-in.
+
+        Returns the attempt_id.
+        """
+        plan_step_span_id: Optional[str] = None
+        if step_snapshot:
+            # Persist the *planned* step as an evidence span so the subsequent
+            # check-in can cite both:
+            #   (a) what we said we would do (microplan step)
+            #   (b) what actually happened (tool output)
+            # This helps detect plan/action drift.
+            try:
+                payload = {
+                    "plan_version": self.plan_version,
+                    "plan_step_idx": int(plan_step_idx),
+                    "step": dict(step_snapshot),
+                }
+                plan_step_span_id = self.add_span(
+                    kind="microplan_step",
+                    source="set_microplan",
+                    text=json.dumps(payload, indent=2, sort_keys=True),
+                    extra={"plan_version": self.plan_version, "plan_step_idx": int(plan_step_idx)},
+                )
+            except Exception as e:  # pragma: no cover
+                logger.warning(f"Failed to write microplan_step span: {e}")
+
+        attempt: Dict[str, Any] = {
+            "ts": _now(),
+            "tool": tool,
+            "note": note,
+            "span_id": span_id,
+            "plan_version": self.plan_version,
+            "plan_step_idx": int(plan_step_idx),
+            "step": dict(step_snapshot or {}),
+            "plan_step_span_id": plan_step_span_id,
+        }
+        if extra:
+            attempt["extra"] = dict(extra)
+        self.attempts.append(attempt)
+        attempt_id = len(self.attempts) - 1
+
+        # Force a post-action check-in before allowing another microplan.
+        self.pending_checkin = {"attempt_id": attempt_id, "ts": _now()}
+
+        # Invalidate plan to enforce evidence-first replanning.
         self.microplan = None
         self.save()
+        return attempt_id
 
 
 STATE = RunState()
@@ -302,6 +372,12 @@ STATE = RunState()
 # ----------------------------
 
 
+class AuditTraceBudgetError(RuntimeError):
+    def __init__(self, message: str, report: Dict[str, Any]) -> None:
+        super().__init__(message)
+        self.report = report
+
+
 def _audit_steps_or_raise(
     *,
     steps: List[Dict[str, Any]],
@@ -310,7 +386,22 @@ def _audit_steps_or_raise(
     pool_json_path: Optional[str],
     units: str,
 ) -> Dict[str, Any]:
-    spans = STATE.all_span_dicts()
+    # Prune span list aggressively: the trace-budget verifier prompt size scales with
+    # the number of spans we pass in. Passing the full run trace (potentially 1000+ spans)
+    # into *every* claim prompt is both slow and expensive.
+    spans_all = STATE.all_span_dicts()
+
+    # Keep only spans that are actually cited by the proposed steps.
+    cited: set[str] = set()
+    for st in steps or []:
+        for c in (st.get("cites") or []):
+            if c is not None:
+                cited.add(str(c))
+
+    if cited:
+        spans = [s for s in spans_all if str(s.get("sid")) in cited]
+    else:
+        spans = []
     report = run_audit_trace_budget(
         steps=steps,
         spans=spans,
@@ -318,11 +409,14 @@ def _audit_steps_or_raise(
         verifier_model=verifier_model,
         default_target=default_target,
         units=units,
+        # Crucial: verify each claim against its cited evidence only.
+        context_mode="cited",
     )
     if bool(report.get("flagged")):
-        raise RuntimeError(
+        raise AuditTraceBudgetError(
             "Hallucination detector flagged the plan/step (insufficient evidence). "
-            "Revise claims or add evidence spans before proceeding."
+            "Revise claims or add evidence spans before proceeding.",
+            report,
         )
     return report
 
@@ -360,6 +454,20 @@ def _require_allowed_cmd(cmd0: str, *, allow_unsafe: bool) -> None:
             f"Command '{base}' is not allowlisted. "
             "Set RESEARCH_MCP_ALLOW_UNSAFE=1 or pass allow_unsafe=True if you really want this."
         )
+
+
+def _require_note_approval(*, approved_by: Optional[str], approval_token: Optional[str]) -> None:
+    token = os.environ.get("NALA_MCP_NOTE_APPROVAL_TOKEN") or os.environ.get(
+        "RESEARCH_MCP_NOTE_APPROVAL_TOKEN"
+    )
+    if token:
+        if str(approval_token or "") != token:
+            raise RuntimeError(
+                "add_span kind='note' requires approval_token matching NALA_MCP_NOTE_APPROVAL_TOKEN."
+            )
+        return
+    if not (approved_by or "").strip():
+        raise RuntimeError("add_span kind='note' requires approved_by (user approval).")
 
 
 # ----------------------------
@@ -556,6 +664,7 @@ def create_mcp_server(pool_json_path: Optional[str] = None):
         STATE.attempts = []
         STATE.microplan = None
         STATE.plan_version = 0
+        STATE.pending_checkin = None
 
         # Seed a charter span that makes "evidence collection" steps supportable.
         if seed_charter:
@@ -569,6 +678,8 @@ def create_mcp_server(pool_json_path: Optional[str] = None):
                 - All actions must be justified by an audited micro-plan (claim+cites).
                 - Evidence is collected via tool outputs and saved as spans [S#].
                 - After each execution/fetch/build, the plan is invalidated and must be recreated.
+                - After each execution/fetch/build, you must *check in* and cite the tool output
+                  before creating the next micro-plan (prevents plan/action drift).
 
                 Allowed evidence-generation actions include:
                 - Searching and downloading academic sources (e.g., arXiv) and extracting text.
@@ -636,10 +747,19 @@ def create_mcp_server(pool_json_path: Optional[str] = None):
         text: str,
         kind: str = "note",
         source: str = "manual",
+        approved_by: Optional[str] = None,
+        approval_token: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Add an evidence span from explicit text."""
         STATE.require_loaded()
-        sid = STATE.add_span(kind=kind, source=source, text=text.strip())
+        kind_norm = (kind or "").strip().lower()
+        extra: Optional[Dict[str, Any]] = None
+        if kind_norm == "note":
+            _require_note_approval(approved_by=approved_by, approval_token=approval_token)
+            extra = {"note_approved": True}
+            if (approved_by or "").strip():
+                extra["approved_by"] = str(approved_by).strip()
+        sid = STATE.add_span(kind=kind, source=source, text=text.strip(), extra=extra)
         return {"sid": sid}
 
     @mcp.tool()
@@ -736,6 +856,7 @@ def create_mcp_server(pool_json_path: Optional[str] = None):
     ) -> Dict[str, Any]:
         """Audit and store a microplan. Required before any execution tools."""
         STATE.require_loaded()
+        STATE.require_no_pending_checkin()
         report = _audit_steps_or_raise(
             steps=steps,
             verifier_model=verifier_model,
@@ -760,6 +881,168 @@ def create_mcp_server(pool_json_path: Optional[str] = None):
         return {"ok": True}
 
     # ----------------------------
+    # Post-action check-in (required before the next microplan)
+    # ----------------------------
+
+    def _get_attempt(attempt_id: int) -> Dict[str, Any]:
+        if attempt_id < 0 or attempt_id >= len(STATE.attempts):
+            raise IndexError(f"attempt_id {attempt_id} out of range (0..{len(STATE.attempts)-1})")
+        a = STATE.attempts[attempt_id]
+        if not isinstance(a, dict):
+            raise RuntimeError(f"Corrupt attempt record at {attempt_id}")
+        return a
+
+    @mcp.tool()
+    def get_pending_checkin() -> Dict[str, Any]:
+        """Return the most recent action that still requires a check-in (if any)."""
+        STATE.require_loaded()
+        if STATE.pending_checkin is None:
+            return {"pending": False}
+        attempt_id = int(STATE.pending_checkin.get("attempt_id"))
+        return {
+            "pending": True,
+            "attempt_id": attempt_id,
+            "attempt": _get_attempt(attempt_id),
+        }
+
+    @mcp.tool()
+    def list_attempts(limit: int = 50, offset: int = 0) -> Dict[str, Any]:
+        """List the execution attempt ledger (actions + check-ins)."""
+        STATE.require_loaded()
+        sl = STATE.attempts[offset : offset + limit]
+        return {
+            "total": len(STATE.attempts),
+            "pending_checkin": STATE.pending_checkin,
+            "attempts": sl,
+        }
+
+    @mcp.tool()
+    def checkin_last_action(
+        status: str,
+        claims: List[Dict[str, Any]],
+        summary: str = "",
+        verifier_model: str = "gpt-4o-mini",
+        default_target: float = 0.95,
+        units: str = "bits",
+    ) -> Dict[str, Any]:
+        """Resolve the post-action check-in gate by citing the last tool output.
+
+        Why this exists:
+        - The server requires evidence -> microplan -> action.
+        - But models can still *drift* by not reading/validating the tool output.
+        - This tool forces an explicit, evidence-backed check-in before allowing
+          the next microplan.
+
+        Inputs:
+        - status: "succeeded" | "failed" | "inconclusive"
+        - claims: a list of *present-tense* claims about what happened, with cites.
+          At least one claim must cite the last action's output span.
+          If a planned-step span is available, at least one claim must cite it too.
+        """
+        STATE.require_loaded()
+
+        if STATE.pending_checkin is None:
+            raise RuntimeError("No pending check-in. Run an execution tool first.")
+
+        status_norm = (status or "").strip().lower()
+        if status_norm not in {"succeeded", "failed", "inconclusive"}:
+            raise ValueError("status must be one of: succeeded, failed, inconclusive")
+
+        attempt_id = int(STATE.pending_checkin.get("attempt_id"))
+        attempt = _get_attempt(attempt_id)
+        last_span = attempt.get("span_id")
+        plan_span = attempt.get("plan_step_span_id")
+
+        if not claims:
+            raise ValueError("claims must be non-empty")
+
+        # Enforce that the model actually looked at the tool output.
+        if last_span:
+            cited_last = False
+            for st in claims:
+                cites = st.get("cites") or []
+                if isinstance(cites, list) and last_span in [str(c) for c in cites]:
+                    cited_last = True
+                    break
+            if not cited_last:
+                raise RuntimeError(
+                    f"At least one check-in claim must cite the last tool output span [{last_span}]."
+                )
+
+        # If we recorded the planned microplan step as a span, require it to be cited
+        # too, so the check-in explicitly connects plan -> action.
+        if plan_span:
+            cited_plan = False
+            for st in claims:
+                cites = st.get("cites") or []
+                if isinstance(cites, list) and plan_span in [str(c) for c in cites]:
+                    cited_plan = True
+                    break
+            if not cited_plan:
+                raise RuntimeError(
+                    f"At least one check-in claim must cite the planned microplan step span [{plan_span}]."
+                )
+
+        attempt_payload = {
+            "tool": attempt.get("tool"),
+            "plan_version": attempt.get("plan_version"),
+            "plan_step_idx": attempt.get("plan_step_idx"),
+            "step": attempt.get("step"),
+            "span_id": attempt.get("span_id"),
+            "plan_step_span_id": plan_span,
+            "note": attempt.get("note"),
+            "extra": attempt.get("extra"),
+        }
+
+        try:
+            report = _audit_steps_or_raise(
+                steps=claims,
+                verifier_model=verifier_model,
+                default_target=float(default_target),
+                pool_json_path=pool_json_path,
+                units=units,
+            )
+        except AuditTraceBudgetError as exc:
+            return {
+                "ok": False,
+                "attempt_id": attempt_id,
+                "status": status_norm,
+                "summary": (summary or "").strip(),
+                "attempt": attempt_payload,
+                "claims": claims,
+                "audit": exc.report,
+                "error": str(exc),
+            }
+
+        payload = {
+            "attempt_id": attempt_id,
+            "status": status_norm,
+            "summary": (summary or "").strip(),
+            "attempt": attempt_payload,
+            "claims": claims,
+            "audit": report,
+        }
+        sid = STATE.add_span(
+            kind="checkin",
+            source="checkin_last_action",
+            text=json.dumps(payload, indent=2, sort_keys=True),
+            extra={"attempt_id": attempt_id, "status": status_norm, "last_span": last_span},
+        )
+
+        # Attach check-in to the attempt record and clear the gate.
+        attempt["checkin"] = {
+            "ts": _now(),
+            "status": status_norm,
+            "summary": (summary or "").strip(),
+            "checkin_span_id": sid,
+            "audit_summary": report.get("summary"),
+        }
+        STATE.pending_checkin = None
+        STATE.save()
+
+        return {"ok": True, "attempt_id": attempt_id, "checkin_span_id": sid, "audit": report}
+
+    # ----------------------------
     # Evidence generation (gated by plan_step_idx)
     # ----------------------------
 
@@ -777,7 +1060,7 @@ def create_mcp_server(pool_json_path: Optional[str] = None):
     ) -> Dict[str, Any]:
         """Run a local command, capture stdout/stderr, store as a span, invalidate plan."""
         STATE.require_loaded()
-        _ = STATE.require_plan_step(int(plan_step_idx))
+        st = STATE.require_plan_step(int(plan_step_idx))
         if not cmd:
             raise ValueError("cmd must be non-empty")
         _require_allowed_cmd(cmd[0], allow_unsafe=allow_unsafe)
@@ -792,8 +1075,15 @@ def create_mcp_server(pool_json_path: Optional[str] = None):
         )
         out = f"$ {' '.join(cmd)}\n\n[exit={proc.returncode}]\n\nSTDOUT:\n{proc.stdout}\n\nSTDERR:\n{proc.stderr}"
         sid = STATE.add_span(kind="cmd", source="run_cmd", text=out, extra={"cmd": cmd, "cwd": str(cwd or run_dir)})
-        STATE.invalidate_plan_after_execution(tool="run_cmd", note=_note_step(int(plan_step_idx)), span_id=sid)
-        return {"sid": sid, "returncode": proc.returncode}
+        attempt_id = STATE.invalidate_plan_after_execution(
+            tool="run_cmd",
+            note=_note_step(int(plan_step_idx)),
+            plan_step_idx=int(plan_step_idx),
+            step_snapshot=st,
+            span_id=sid,
+            extra={"returncode": int(proc.returncode)},
+        )
+        return {"sid": sid, "returncode": proc.returncode, "attempt_id": attempt_id}
 
     @mcp.tool()
     def rg_search(
@@ -878,7 +1168,7 @@ def create_mcp_server(pool_json_path: Optional[str] = None):
         combined build+run attempt).
         """
         STATE.require_loaded()
-        _ = STATE.require_plan_step(int(plan_step_idx))
+        st = STATE.require_plan_step(int(plan_step_idx))
 
         run_dir, _ = STATE.require_loaded()
         scripts = STATE.scripts_dir()
@@ -940,13 +1230,24 @@ def create_mcp_server(pool_json_path: Optional[str] = None):
             text=log,
             extra={"source": str(src), "exe": str(exe), "build_cmd": build_cmd, "run_cmd": run_cmdline},
         )
-        STATE.invalidate_plan_after_execution(tool="cpp_run", note=_note_step(int(plan_step_idx)), span_id=sid)
+        attempt_id = STATE.invalidate_plan_after_execution(
+            tool="cpp_run",
+            note=_note_step(int(plan_step_idx)),
+            plan_step_idx=int(plan_step_idx),
+            step_snapshot=st,
+            span_id=sid,
+            extra={
+                "build_returncode": int(build.returncode),
+                "run_returncode": (int(run_rc) if run_rc is not None else None),
+            },
+        )
         return {
             "sid": sid,
             "source": str(src),
             "exe": str(exe),
             "build_returncode": int(build.returncode),
             "run_returncode": (int(run_rc) if run_rc is not None else None),
+            "attempt_id": attempt_id,
         }
 
     # ----------------------------
@@ -957,12 +1258,19 @@ def create_mcp_server(pool_json_path: Optional[str] = None):
     def arxiv_search(query: str, plan_step_idx: int, max_results: int = 10) -> Dict[str, Any]:
         """Search arXiv via its Atom API (returns metadata, does not auto-ingest)."""
         STATE.require_loaded()
-        _ = STATE.require_plan_step(int(plan_step_idx))
+        st = STATE.require_plan_step(int(plan_step_idx))
         results = _arxiv_api_search(query, max_results=int(max_results))
         # Store results as span for provenance.
         sid = STATE.add_span(kind="arxiv_search", source="arxiv", text=json.dumps(results, indent=2))
-        STATE.invalidate_plan_after_execution(tool="arxiv_search", note=_note_step(int(plan_step_idx)), span_id=sid)
-        return {"sid": sid, "results": results}
+        attempt_id = STATE.invalidate_plan_after_execution(
+            tool="arxiv_search",
+            note=_note_step(int(plan_step_idx)),
+            plan_step_idx=int(plan_step_idx),
+            step_snapshot=st,
+            span_id=sid,
+            extra={"num_results": len(results)},
+        )
+        return {"sid": sid, "results": results, "attempt_id": attempt_id}
 
     @mcp.tool()
     def fetch_url(
@@ -974,13 +1282,20 @@ def create_mcp_server(pool_json_path: Optional[str] = None):
     ) -> Dict[str, Any]:
         """Fetch a URL and store the text content as a span."""
         STATE.require_loaded()
-        _ = STATE.require_plan_step(int(plan_step_idx))
+        st = STATE.require_plan_step(int(plan_step_idx))
         ct, txt = _http_get(url, timeout_s=float(timeout_s), max_bytes=int(max_bytes))
         if strip_html and ("html" in ct):
             txt = _strip_html(txt)
         sid = STATE.add_span(kind="web", source=url, text=txt, extra={"content_type": ct, "url": url})
-        STATE.invalidate_plan_after_execution(tool="fetch_url", note=_note_step(int(plan_step_idx)), span_id=sid)
-        return {"sid": sid, "content_type": ct}
+        attempt_id = STATE.invalidate_plan_after_execution(
+            tool="fetch_url",
+            note=_note_step(int(plan_step_idx)),
+            plan_step_idx=int(plan_step_idx),
+            step_snapshot=st,
+            span_id=sid,
+            extra={"content_type": ct, "url": url},
+        )
+        return {"sid": sid, "content_type": ct, "attempt_id": attempt_id}
 
     @mcp.tool()
     def download_url(
@@ -992,7 +1307,7 @@ def create_mcp_server(pool_json_path: Optional[str] = None):
     ) -> Dict[str, Any]:
         """Download a URL into the run's files/ directory and store a metadata span."""
         STATE.require_loaded()
-        _ = STATE.require_plan_step(int(plan_step_idx))
+        st = STATE.require_plan_step(int(plan_step_idx))
         files = STATE.files_dir()
         name = filename or os.path.basename(urllib.parse.urlparse(url).path) or f"file_{int(time.time()*1000)}"
         out = files / name
@@ -1009,8 +1324,15 @@ def create_mcp_server(pool_json_path: Optional[str] = None):
                 f.write(chunk)
         meta = {"url": url, "saved_to": str(out)}
         sid = STATE.add_span(kind="download", source=url, text=json.dumps(meta, indent=2))
-        STATE.invalidate_plan_after_execution(tool="download_url", note=_note_step(int(plan_step_idx)), span_id=sid)
-        return {"sid": sid, "path": str(out)}
+        attempt_id = STATE.invalidate_plan_after_execution(
+            tool="download_url",
+            note=_note_step(int(plan_step_idx)),
+            plan_step_idx=int(plan_step_idx),
+            step_snapshot=st,
+            span_id=sid,
+            extra={"url": url, "path": str(out), "bytes": int(n)},
+        )
+        return {"sid": sid, "path": str(out), "attempt_id": attempt_id}
 
     @mcp.tool()
     def pdf_extract(
@@ -1022,7 +1344,7 @@ def create_mcp_server(pool_json_path: Optional[str] = None):
     ) -> Dict[str, Any]:
         """Extract text from a PDF (1-indexed pages) and store as a span."""
         STATE.require_loaded()
-        _ = STATE.require_plan_step(int(plan_step_idx))
+        st = STATE.require_plan_step(int(plan_step_idx))
         from pypdf import PdfReader
 
         p = Path(path).expanduser().resolve()
@@ -1047,8 +1369,15 @@ def create_mcp_server(pool_json_path: Optional[str] = None):
             text=txt,
             extra={"path": str(p), "page_start": ps, "page_end": pe},
         )
-        STATE.invalidate_plan_after_execution(tool="pdf_extract", note=_note_step(int(plan_step_idx)), span_id=sid)
-        return {"sid": sid, "pages": [ps, pe]}
+        attempt_id = STATE.invalidate_plan_after_execution(
+            tool="pdf_extract",
+            note=_note_step(int(plan_step_idx)),
+            plan_step_idx=int(plan_step_idx),
+            step_snapshot=st,
+            span_id=sid,
+            extra={"path": str(p), "page_start": ps, "page_end": pe},
+        )
+        return {"sid": sid, "pages": [ps, pe], "attempt_id": attempt_id}
 
     @mcp.tool()
     def arxiv_download_source(
@@ -1057,7 +1386,7 @@ def create_mcp_server(pool_json_path: Optional[str] = None):
     ) -> Dict[str, Any]:
         """Download arXiv source tarball (e-print) and extract into files/; store as span."""
         STATE.require_loaded()
-        _ = STATE.require_plan_step(int(plan_step_idx))
+        st = STATE.require_plan_step(int(plan_step_idx))
         aid = arxiv_id.strip()
         url = f"https://arxiv.org/e-print/{aid}"
         ct, txt = _http_get(url, timeout_s=60.0, max_bytes=100_000_000)
@@ -1082,8 +1411,15 @@ def create_mcp_server(pool_json_path: Optional[str] = None):
 
         meta = {"arxiv_id": aid, "url": url, "tar_path": str(tar_path), "extract_dir": str(extract_dir)}
         sid = STATE.add_span(kind="arxiv_src", source=url, text=json.dumps(meta, indent=2))
-        STATE.invalidate_plan_after_execution(tool="arxiv_download_source", note=_note_step(int(plan_step_idx)), span_id=sid)
-        return {"sid": sid, **meta}
+        attempt_id = STATE.invalidate_plan_after_execution(
+            tool="arxiv_download_source",
+            note=_note_step(int(plan_step_idx)),
+            plan_step_idx=int(plan_step_idx),
+            step_snapshot=st,
+            span_id=sid,
+            extra=dict(meta),
+        )
+        return {"sid": sid, "attempt_id": attempt_id, **meta}
 
     return mcp
 
@@ -1093,22 +1429,40 @@ def main() -> None:
     if not pool_json_path and len(sys.argv) > 1:
         pool_json_path = sys.argv[1]
 
-    if pool_json_path:
-        if not os.path.exists(pool_json_path):
+    # Prefer OpenAI API when available, even if an AOAI pool is configured.
+    force_aoai = os.environ.get("STRAWBERRY_FORCE_AOAI_POOL", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "y",
+    }
+    have_openai = bool(os.environ.get("OPENAI_API_KEY"))
+    use_aoai = bool(pool_json_path) and (force_aoai or not have_openai)
+
+    if use_aoai:
+        if not os.path.exists(pool_json_path or ""):
             logger.error(f"Pool config file not found: {pool_json_path}")
             sys.exit(1)
         logger.info(f"Starting nala-mcp with Azure OpenAI pool: {pool_json_path}")
+        selected_pool_json_path: Optional[str] = pool_json_path
     else:
-        if not os.environ.get("OPENAI_API_KEY"):
+        if not have_openai:
             logger.error(
                 "No backend configured. Either:\n"
                 "  1) Set OPENAI_API_KEY for OpenAI API, or\n"
                 "  2) Provide AOAI_POOL_JSON or pass pool path as argv[1]."
             )
             sys.exit(1)
-        logger.info("Starting nala-mcp with OpenAI API")
+        if pool_json_path and not force_aoai:
+            logger.info(
+                "Starting nala-mcp with OpenAI API "
+                f"(ignoring AOAI pool config; set STRAWBERRY_FORCE_AOAI_POOL=1 to force Azure pool): {pool_json_path}"
+            )
+        else:
+            logger.info("Starting nala-mcp with OpenAI API")
+        selected_pool_json_path = None
 
-    mcp = create_mcp_server(pool_json_path)
+    mcp = create_mcp_server(selected_pool_json_path)
     mcp.run(transport="stdio")
 
 

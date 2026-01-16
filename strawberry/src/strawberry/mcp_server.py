@@ -111,7 +111,20 @@ def _split_claims(answer: str, mode: str, max_claims: int) -> List[str]:
     else:
         raw = [s.strip() for s in _SENTENCE_SPLIT_RE.split(a) if s.strip()]
 
-    return raw[: max(1, int(max_claims))]
+    # Heuristic: sentence splitting often detaches bare citation blocks (e.g. "Claim. [S0]").
+    # Re-attach any segment that contains only citations/punctuation to the previous claim.
+    merged: List[str] = []
+    for seg in raw:
+        # Remove citations, then strip remaining separators/punctuation.
+        remainder = _DEFAULT_CITE_RE.sub("", seg)
+        remainder = re.sub(r"[\s,;:.\-–—!?]+", "", remainder)
+        cites_only = (remainder == "") and bool(_DEFAULT_CITE_RE.search(seg))
+        if cites_only and merged:
+            merged[-1] = (merged[-1] + " " + seg).strip()
+        else:
+            merged.append(seg)
+
+    return merged[: max(1, int(max_claims))]
 
 
 def _map_cites_to_known_ids(cites: List[str], known: set) -> List[str]:
@@ -212,6 +225,7 @@ def run_detect_hallucination(
     max_concurrency: int = 8,
     timeout_s: Optional[float] = 30.0,
     units: str = "bits",
+    context_mode: str = "all",
 ) -> Dict[str, Any]:
     """
     Given a fully-written answer containing citations and the cited spans,
@@ -243,9 +257,13 @@ def run_detect_hallucination(
 
     # Choose backend: aoai_pool if pool config provided, otherwise openai
     if pool_json_path:
+        # NOTE: AOAI pools can contain multiple backend entries; if some are stale/misconfigured,
+        # we want the pool to try more than one before failing hard.
+        aoai_max_attempts = int(os.environ.get("AOAI_POOL_MAX_ATTEMPTS", "8") or "8")
         cfg = BackendConfig(
             kind="aoai_pool",
             aoai_pool_json_path=pool_json_path,
+            aoai_pool_max_attempts=aoai_max_attempts,
             max_concurrency=int(max_concurrency),
             timeout_s=timeout_s,
         )
@@ -266,6 +284,7 @@ def run_detect_hallucination(
         temperature=float(temperature),
         top_logprobs=int(top_logprobs),
         placeholder=str(placeholder),
+        context_mode=str(context_mode),
         reasoning=None,
     )
 
@@ -295,6 +314,7 @@ def run_audit_trace_budget(
     verifier_model: str = "gpt-4o-mini",
     default_target: float = 0.95,
     placeholder: str = "[REDACTED]",
+    context_mode: str = "all",
     temperature: float = 0.0,
     top_logprobs: int = 10,
     max_concurrency: int = 8,
@@ -315,9 +335,11 @@ def run_audit_trace_budget(
 
     # Choose backend: aoai_pool if pool config provided, otherwise openai
     if pool_json_path:
+        aoai_max_attempts = int(os.environ.get("AOAI_POOL_MAX_ATTEMPTS", "8") or "8")
         cfg = BackendConfig(
             kind="aoai_pool",
             aoai_pool_json_path=pool_json_path,
+            aoai_pool_max_attempts=aoai_max_attempts,
             max_concurrency=int(max_concurrency),
             timeout_s=timeout_s,
         )
@@ -338,6 +360,7 @@ def run_audit_trace_budget(
         temperature=float(temperature),
         top_logprobs=int(top_logprobs),
         placeholder=str(placeholder),
+        context_mode=str(context_mode),
         reasoning=None,
     )
 
@@ -507,19 +530,29 @@ def main() -> None:
     """Entry point for the MCP server."""
     # Get pool config path from environment or command line (optional)
     pool_json_path = os.environ.get("AOAI_POOL_JSON")
-
     if not pool_json_path and len(sys.argv) > 1:
         pool_json_path = sys.argv[1]
 
-    # Validate pool config if provided
-    if pool_json_path:
-        if not os.path.exists(pool_json_path):
+    # Prefer OpenAI API when available, even if an AOAI pool is configured.
+    # Rationale: some environments ship a default AOAI pool config that may be stale,
+    # while OPENAI_API_KEY is set and functional.
+    force_aoai = os.environ.get("STRAWBERRY_FORCE_AOAI_POOL", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "y",
+    }
+    have_openai = bool(os.environ.get("OPENAI_API_KEY"))
+    use_aoai = bool(pool_json_path) and (force_aoai or not have_openai)
+
+    if use_aoai:
+        if not os.path.exists(pool_json_path or ""):
             logger.error(f"Pool config file not found: {pool_json_path}")
             sys.exit(1)
         logger.info(f"Starting hallucination-detector MCP server with Azure OpenAI pool: {pool_json_path}")
+        selected_pool_json_path: Optional[str] = pool_json_path
     else:
-        # Check for OpenAI API key
-        if not os.environ.get("OPENAI_API_KEY"):
+        if not have_openai:
             logger.error(
                 "No backend configured. Either:\n"
                 "  1. Set OPENAI_API_KEY environment variable for OpenAI API, or\n"
@@ -527,9 +560,16 @@ def main() -> None:
                 "     or set AOAI_POOL_JSON environment variable"
             )
             sys.exit(1)
-        logger.info("Starting hallucination-detector MCP server with OpenAI API")
+        if pool_json_path and not force_aoai:
+            logger.info(
+                "Starting hallucination-detector MCP server with OpenAI API "
+                f"(ignoring AOAI pool config; set STRAWBERRY_FORCE_AOAI_POOL=1 to force Azure pool): {pool_json_path}"
+            )
+        else:
+            logger.info("Starting hallucination-detector MCP server with OpenAI API")
+        selected_pool_json_path = None
 
-    mcp = create_mcp_server(pool_json_path)
+    mcp = create_mcp_server(selected_pool_json_path)
     mcp.run(transport="stdio")
 
 
