@@ -217,7 +217,7 @@ async def async_score_candidate(
     semaphore: asyncio.Semaphore,
     errors: list,
     error_log: list,
-    model: str = "gpt-4o-mini",
+    model: str = "gpt-4.1-nano",
 ) -> float:
     """Score a single candidate asynchronously using OpenAI API."""
     prompt = f"""Score how relevant this candidate is to answering the query.
@@ -287,7 +287,7 @@ async def async_rerank_question(
     semaphore: asyncio.Semaphore,
     errors: list,
     error_log: list,
-    model: str = "gpt-4o-mini",
+    model: str = "gpt-4.1-nano",
 ) -> tuple:
     """Rerank all candidates for a question in parallel."""
     if len(node_ids) <= 1:
@@ -312,7 +312,7 @@ async def run_async_reranking(
     api_key: str,
     pbar,
     top_k: int = 20,
-    model: str = "gpt-4o-mini",
+    model: str = "gpt-4.1-nano",
 ) -> tuple:
     """Run all reranking in parallel using async.
 
@@ -357,7 +357,7 @@ async def run_async_reranking(
 class OpenAIBackend:
     """OpenAI API backend compatible with pythea's hallucination detector."""
 
-    def __init__(self, api_key: str, model: str = "gpt-4o-mini"):
+    def __init__(self, api_key: str, model: str = "gpt-4.1-nano"):
         self.api_key = api_key
         self.model = model
         self._session = None
@@ -498,7 +498,7 @@ def run(
     guard_workers: int = 0,
     mp_start: str = "fork",
     torch_threads: int = 1,
-    model: str = "gpt-4o-mini",
+    model: str = "gpt-4.1-nano",
 ):
 
     # Import here so the script still starts even if deps missing
@@ -627,7 +627,7 @@ def run(
                     try:
                         decision, m = evaluate_evidence_mixture_logprob_with_backend(
                             MixtureInputs(posterior_prompt=post, skeleton_prompts=[skel]),
-                            MixtureConfig(model="gpt-4o-mini", hstar=0.05),
+                            MixtureConfig(model="gpt-4.1-nano", hstar=0.05),
                             backend=backend,
                         )
                         guard_results[idx] = (decision, m)
@@ -795,7 +795,7 @@ if __name__ == "__main__":
     p.add_argument("--rerank-top-k", type=int, default=20, help="Number of candidates to LLM rerank")
     p.add_argument("--no-graph-expansion", action="store_true", help="Skip graph expansion")
     p.add_argument("--openai-api-key", help="OpenAI API key (or set OPENAI_API_KEY env var)")
-    p.add_argument("--model", default="gpt-4o-mini", help="OpenAI model to use (default: gpt-4o-mini)")
+    p.add_argument("--model", default="gpt-4.1-nano", help="OpenAI model to use (default: gpt-4.1-nano)")
 
     p.add_argument("--retrieval-workers", type=int, default=0, help="CPU processes for retrieval (0=auto)")
     p.add_argument("--guard-workers", type=int, default=0, help="Threads for guard calls (0=auto)")

@@ -11,7 +11,7 @@ Usage:
     source ~/halls/minAPI/.env
 
     # Run
-    python examples/run_audit_openai.py --model gpt-4o-mini --attacks 5
+    python examples/run_audit_openai.py --model gpt-4.1-nano --attacks 5
 """
 
 from __future__ import annotations
@@ -38,7 +38,7 @@ from modern_attack_payloads import (
 )
 
 
-def make_openai_backend(model: str = "gpt-4o-mini"):
+def make_openai_backend(model: str = "gpt-4.1-nano"):
     """Create OpenAI-compatible backend for BernoulliProbe."""
     try:
         from openai import OpenAI
@@ -97,7 +97,7 @@ def make_openai_backend(model: str = "gpt-4o-mini"):
 
 def main():
     parser = argparse.ArgumentParser(description="Run prompt injection audit with OpenAI")
-    parser.add_argument("--model", default="gpt-4o-mini", help="OpenAI model")
+    parser.add_argument("--model", default="gpt-4.1-nano", help="OpenAI model")
     parser.add_argument("--attacks", type=int, default=None, help="Limit number of attacks to test")
     parser.add_argument("--min-effectiveness", default="medium",
                         choices=["low", "low-medium", "medium", "medium-high", "high"],
