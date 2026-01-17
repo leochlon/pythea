@@ -317,7 +317,7 @@ def call_text(
 def call_text_chat(
     *,
     prompt: str,
-    model: str = "gpt-4o-mini",
+    model: str = "gpt-4.1-nano",
     instructions: str = "You are a helpful assistant.",
     temperature: float = 0.0,
     max_output_tokens: int = 64,

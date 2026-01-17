@@ -599,7 +599,7 @@ def create_mcp_server(pool_json_path: Optional[str] = None):
     @mcp.tool()
     def detect_hallucination(
         answer: str,
-        verifier_model: str = "gpt-4o-mini",
+        verifier_model: str = "gpt-4.1-nano",
         default_target: float = 0.95,
         placeholder: str = "[REDACTED]",
         max_claims: int = 25,
@@ -633,7 +633,7 @@ def create_mcp_server(pool_json_path: Optional[str] = None):
     @mcp.tool()
     def audit_trace_budget(
         steps: List[Dict[str, Any]],
-        verifier_model: str = "gpt-4o-mini",
+        verifier_model: str = "gpt-4.1-nano",
         default_target: float = 0.95,
         placeholder: str = "[REDACTED]",
         context_mode: str = "cited",
@@ -875,7 +875,7 @@ def create_mcp_server(pool_json_path: Optional[str] = None):
     @mcp.tool()
     def set_microplan(
         steps: List[Dict[str, Any]],
-        verifier_model: str = "gpt-4o-mini",
+        verifier_model: str = "gpt-4.1-nano",
         default_target: float = 0.95,
         units: str = "bits",
     ) -> Dict[str, Any]:
@@ -955,7 +955,7 @@ def create_mcp_server(pool_json_path: Optional[str] = None):
         status: str,
         claims: List[Dict[str, Any]],
         summary: str = "",
-        verifier_model: str = "gpt-4o-mini",
+        verifier_model: str = "gpt-4.1-nano",
         default_target: float = 0.95,
         units: str = "bits",
     ) -> Dict[str, Any]:

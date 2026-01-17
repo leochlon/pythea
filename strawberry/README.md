@@ -178,7 +178,7 @@ The important part is: whatever you claim, you should be able to point to a span
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `verifier_model` | `gpt-4o-mini` | Model for verification |
+| `verifier_model` | `gpt-4.1-nano` | Model for verification |
 | `default_target` | `0.95` | Confidence threshold |
 | `max_claims` | `25` | Max claims to process |
 | `units` | `bits` | Output units: `bits` or `nats` |
@@ -241,7 +241,7 @@ If ObservedBits < RequiredBits → evidence doesn't justify confidence → **fla
 ```bash
 python -m strawberry.factual_recall \
   --backend openai \
-  --generator_model gpt-4o-mini \
+  --generator_model gpt-4.1-nano \
   --question "Which US senators from Minnesota graduated from Princeton" \
   --out report.json
 ```
@@ -261,8 +261,8 @@ strawberry run \
 ```bash
 strawberry cot \
   --backend openai \
-  --generator_model gpt-4o-mini \
-  --verifier_model gpt-4o-mini \
+  --generator_model gpt-4.1-nano \
+  --verifier_model gpt-4.1-nano \
   --synthetic --M 10 --distance 256
 ```
 
