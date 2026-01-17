@@ -16,3 +16,24 @@ planning_runs/
 __pycache__/
 *.pyc
 *.egg-info/
+
+.tasks/
+
+# Personal/Private files - DO NOT COMMIT TO PUBLIC REPO
+CLAUDE.md
+.claude/
+research_runs/
+*.local.json
+*.local.yaml
+*.local.md
+.env
+.env.*
+!.env.example
+pool.json
+**/pool.json
+credentials.json
+**/credentials.json
+
+# Autonomous protocol artifacts
+audit_reports/
+evidence_packs/

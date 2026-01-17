@@ -214,7 +214,7 @@ def run_detect_hallucination(
     answer: str,
     spans: List[Dict[str, str]],
     pool_json_path: Optional[str] = None,
-    verifier_model: str = "gpt-4o-mini",
+    verifier_model: str = "gpt-4.1-nano",
     default_target: float = 0.95,
     placeholder: str = "[REDACTED]",
     max_claims: int = 25,
@@ -311,7 +311,7 @@ def run_audit_trace_budget(
     steps: List[Dict[str, Any]],
     spans: List[Dict[str, str]],
     pool_json_path: Optional[str] = None,
-    verifier_model: str = "gpt-4o-mini",
+    verifier_model: str = "gpt-4.1-nano",
     default_target: float = 0.95,
     placeholder: str = "[REDACTED]",
     context_mode: str = "all",
@@ -426,7 +426,7 @@ def create_mcp_server(pool_json_path: Optional[str] = None):
     def detect_hallucination(
         answer: str,
         spans: List[Dict[str, str]],
-        verifier_model: str = "gpt-4o-mini",
+        verifier_model: str = "gpt-4.1-nano",
         default_target: float = 0.95,
         placeholder: str = "[REDACTED]",
         max_claims: int = 25,
@@ -445,7 +445,7 @@ def create_mcp_server(pool_json_path: Optional[str] = None):
         Args:
             answer: The final answer text containing citations like [S0], [S1], etc.
             spans: List of {"sid": "S0", "text": "..."} objects for each cited span.
-            verifier_model: Model to use for verification (e.g. gpt-4o-mini).
+            verifier_model: Model to use for verification (e.g. gpt-4.1-nano).
             default_target: Target confidence level (default 0.95).
             placeholder: Text to replace scrubbed citations with.
             max_claims: Maximum number of claims to process.
@@ -481,7 +481,7 @@ def create_mcp_server(pool_json_path: Optional[str] = None):
     def audit_trace_budget(
         steps: List[Dict[str, Any]],
         spans: List[Dict[str, str]],
-        verifier_model: str = "gpt-4o-mini",
+        verifier_model: str = "gpt-4.1-nano",
         default_target: float = 0.95,
         placeholder: str = "[REDACTED]",
         temperature: float = 0.0,
@@ -497,7 +497,7 @@ def create_mcp_server(pool_json_path: Optional[str] = None):
         Args:
             steps: List of {"idx": 0, "claim": "...", "cites": ["S0"], "confidence": 0.95}.
             spans: List of {"sid": "S0", "text": "..."} objects.
-            verifier_model: Model to use for verification (e.g. gpt-4o-mini).
+            verifier_model: Model to use for verification (e.g. gpt-4.1-nano).
             default_target: Default confidence if not specified per-step.
             placeholder: Text to replace scrubbed citations with.
             temperature: Sampling temperature for verifier.

@@ -27,7 +27,7 @@ Limitations (by design):
 Run (OpenAI):
   python factual_recall.py \
     --backend openai \
-    --generator_model gpt-4o-mini \
+    --generator_model gpt-4.1-nano \
     --question "Which US senators from Minnesota graduated from Princeton" \
     --out report.json
 

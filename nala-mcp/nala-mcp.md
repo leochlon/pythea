@@ -314,7 +314,7 @@ Lightweight TF‑IDF search over span texts. Returns span ids + scores.
 
 ### Planning
 
-#### `set_microplan(steps, verifier_model="gpt-4o-mini", default_target=0.95, units="bits")`
+#### `set_microplan(steps, verifier_model="gpt-4.1-nano", default_target=0.95, units="bits")`
 Audits and stores a microplan. Required before any evidence-generation tools.
 
 #### `get_microplan()`
